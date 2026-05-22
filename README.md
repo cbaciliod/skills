@@ -56,6 +56,7 @@ Si no sabes por dónde empezar, escribe algo como "no sé qué hacer primero" y 
 |-----------|----------------|
 |[Claude Code](https://docs.anthropic.com/en/docs/claude-code)|cualquier versión con soporte de skills|
 |Git|2.x|
+|[GitHub CLI (`gh`)](https://cli.github.com/)|2.x|
 |Repositorio en GitHub|—|
 
 El skill no instala dependencias externas ni ejecuta comandos en la terminal. Toda la salida es texto que puedes copiar directamente.
