@@ -36,6 +36,31 @@ Usa estos límites como guía, no como reglas absolutas:
 - Cambios generados automáticamente
 - Documentación extensa
 
+### ⚠️ Si superas el límite debes justificarlo
+
+Si tu PR supera los límites, **es obligatorio** agregar una sección
+de justificación en la descripción del PR:
+
+```markdown
+## Justificación de sobre límite:
+- **Motivo:** [por qué no se pudo dividir]
+- **Condición técnica:** [qué lo produce, ej: migración atómica, cambio de contrato]
+- **Técnicas evaluadas:** [qué técnica se consideró y por qué no aplicó]
+```
+
+**Ejemplos válidos de justificación:**
+
+- Refactoring automático por renombrado masivo de paquete
+- Migración de dependencia que afecta múltiples capas de forma atómica
+- Cambio de contrato de API que requiere actualizar todos los consumers a la vez
+- Cambios generados automáticamente (mocks, protobuf, etc.)
+
+**Ejemplos NO válidos:**
+
+- "Se me fue de las manos"
+- "Era urgente"
+- "No tuve tiempo de dividirlo"
+
 ---
 
 ## 3. Técnicas de división de trabajo
@@ -563,6 +588,7 @@ Refs: #CEB-1234
 - [ ] Descripción explica el QUÉ y el POR QUÉ
 - [ ] Incluye referencias a tickets (`Refs: #CEB-XXXX`)
 - [ ] Screenshots/videos si hay cambios visuales
+- [ ] **Si supera límites:** incluye sección de justificación de sobre límite
 
 > Si alguna respuesta es **NO** → Considera dividir el PR usando las técnicas de la sección 3.
 
