@@ -56,7 +56,6 @@ Si no sabes por dónde empezar, escribe algo como "no sé qué hacer primero" y 
 |-----------|----------------|
 |[Claude Code](https://docs.anthropic.com/en/docs/claude-code)|cualquier versión con soporte de skills|
 |Git|2.x|
-|[GitHub CLI (`gh`)](https://cli.github.com/)|2.x|
 |Repositorio en GitHub|—|
 
 El skill no instala dependencias externas ni ejecuta comandos en la terminal. Toda la salida es texto que puedes copiar directamente.
@@ -122,3 +121,15 @@ git-workflow/
 |Breaking changes|`tipo!: descripción` + footer `BREAKING CHANGE: <detalle>`|
 |Tamaño de PR recomendado|< 200 líneas, < 5 archivos|
 |Tamaño de PR máximo|< 400 líneas, < 10 archivos|
+
+## Reglas generales (siempre aplican)
+
+- Nunca mezclar refactoring con nueva funcionalidad en el mismo PR
+- El ID del ticket (CEB-XXXX) va en el cuerpo del PR, nunca en el título
+- Descripciones en español, títulos de commit en español
+- Un PR = un problema o una funcionalidad
+- Si un PR supera los límites establecidos (> 400 líneas o > 10 archivos),
+  el autor DEBE justificar en la descripción del PR:
+  1. **Por qué** no se pudo dividir
+  2. **Qué condición técnica** produce el sobre límite
+  3. **Qué técnica de división** se evaluó y por qué no aplicó
