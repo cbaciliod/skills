@@ -1,7 +1,7 @@
 ---
 name: git-workflow
 description: >
-  Genera commits, pull requests y CHANGELOG siguiendo Conventional Commits (tipos en inglés: feat, fix, chore…; título corto y descripción en español) para Github. Activa este skill cuando el mensaje del usuario contenga (sin distinguir mayúsculas) cualquiera de estas palabras o sus variantes: commit, "pull request", PR, documentar cambios, CHANGELOG, git diff, revisar cambios. Si la intención no es clara, pregunta ¿quieres ayuda con commits/PR/CHANGELOG?
+  Genera commits, pull requests y CHANGELOG siguiendo Conventional Commits (tipos en inglés: feat, fix…; título corto y descripción en español) para Github. Activa este skill cuando el mensaje del usuario contenga (sin distinguir mayúsculas) cualquiera de estas palabras o sus variantes: commit, "pull request", PR, documentar cambios, CHANGELOG, git diff, revisar cambios. Si la intención no es clara, pregunta ¿quieres ayuda con commits/PR/CHANGELOG?
 ---
 
 # Git Workflow
@@ -38,7 +38,7 @@ Usa este flujo solo si el usuario pide un plan o expresa incertidumbre ("no sé 
 
 - Nunca mezclar refactoring con nueva funcionalidad en el mismo PR
 - El ID del ticket (CEB-XXXX) va en el cuerpo del PR, nunca en el título
-- Prefijo y scope del commit en inglés (feat, fix, chore…); título corto del commit y descripción del PR en español
+- Prefijo y scope del commit en inglés (feat, fix...); título corto del commit y descripción del PR en español
 - Si el usuario indica preferencia de idioma, respétala en todo el output; si es ambigua, pregunta: "¿prefieres español o inglés para el título y descripción?"
 - Un PR debe abordar exactamente un ticket identificable (bug o feature) o una única funcionalidad autocontenida. Para múltiples pequeños cambios no relacionados, crea PRs separados; para cambios estrechamente relacionados, agrúpalos bajo un único ticket.
 - Si el usuario pide generar commits o PR sin proporcionar diff ni lista de cambios, pregunta: "Por favor pega el `git diff` o la lista de archivos cambiados y un resumen de los cambios."

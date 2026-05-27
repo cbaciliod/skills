@@ -15,10 +15,7 @@ Refs: #CEB-XXXX
 |`hotfix`|Corrección urgente en producción|
 |`refactor`|Cambio sin nueva funcionalidad ni bug|
 |`test`|Agregar o corregir tests|
-|`chore`|Mantenimiento, dependencias|
-|`docs`|Solo documentación|
-|`style`|Formato, espacios (sin cambio de lógica)|
-|`ci`|Cambios en CI/CD|
+|`docs`|Cambios de documentación|
 
 ## Reglas
 
@@ -71,8 +68,6 @@ Al cerrar una versión, agrupar commits así:
 ### Changed
 - refactor: descripción
 
-### Chore
-- chore: descripción
 ```
 
 Si tu PR supera estos límites → ver `pr-guidelines.md` para dividirlo.
