@@ -15,6 +15,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.0.0/) y el v
 
 ---
 
+## [migrate-spring-boot-java25 1.0.0] - 2026-06-05
+
+- feat: skill `migrate-spring-boot-java25` para migrar microservicios de Spring Boot 2.7.x / Java 11 a Spring Boot 3.5.14 / Java 25
+- docs: agregar `references/pom-changes.md` con cambios de dependencias, plugins y versiones de librerías Novo
+- docs: agregar `references/code-changes.md` con migración de `javax` → `jakarta`, Gson TypeAdapter, SpringDoc y OpenTelemetry
+- docs: agregar `references/test-changes.md` con actualizaciones de tests para Spring Boot 3
+- docs: agregar `references/quality-config.md` con configuración de SpotBugs, Checkstyle y Sonar
+- docs: agregar `references/novo-libraries.md` con catálogo de librerías Novo y versiones compatibles con SB 3
+- docs: agregar `skill.md` con flujo de migración en 3 fases (upgrade, SpringDoc, OpenTelemetry) y preguntas de diagnóstico
+
+---
+
 ## [git-workflow 1.0.0] - 2026-05-22
 
 - feat: skill `git-workflow` para generar commits, Pull Requests y CHANGELOG siguiendo Conventional Commits
