@@ -6,6 +6,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.0.0/) y el v
 
 ---
 
+## [1.0.1] - 2026-06-05
+
+- style(readme): compactar formato de tablas en README principal
+- docs(migrate): corregir MD036 reemplazando `**bold**` por `####` headings en fases
+- chore(git-workflow): eliminar CHANGELOG redundante, historial consolidado en raíz
+- docs(changelog): agregar entrada de migrate-spring-boot-java25 e incorporar historial de git-workflow
+
+---
+
 ## [1.0.0] - 2026-06-05
 
 - docs: agregar README con resumen de skills disponibles
