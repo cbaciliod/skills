@@ -4,9 +4,9 @@ Este directorio contiene skills (agentes especializados) para tareas recurrentes
 
 ## Skills disponibles
 
-| Skill | Comando | Descripción |
+|Skill|Comando|Descripción|
 |-------|---------|-------------|
-| `migrate-spring-boot-java25` | `/migrate-spring-boot-java25` | Migra un microservicio de Spring Boot 2.7.x / Java 11 a Spring Boot 3.5.14 / Java 25 |
+|`migrate-spring-boot-java25`|`/migrate-spring-boot-java25`|Migra un microservicio de Spring Boot 2.7.x / Java 11 a Spring Boot 3.5.14 / Java 25|
 
 ---
 
@@ -18,26 +18,29 @@ Cubre 3 fases de trabajo entregadas en PRs separados.
 ### Cómo usarlo
 
 En Claude Code, escribe:
-```
+
+```txt
 /migrate-spring-boot-java25
 ```
 
 O describe qué quieres migrar:
-```
+
+```txt
 migra el componente api-tbs-[nombre] siguiendo el mismo patrón de upgrade
 ```
 
 ### Qué hace
 
-| Fase | Tarea | Jira | PR de referencia |
+|Fase|Tarea|Jira|PR de referencia|
 |------|-------|------|-----------------|
-| 1 | Upgrade Spring Boot 3.5.14 + Java 25 | CEB-5855 | #34 |
-| 2 | Migrar SpringFox → SpringDoc OpenAPI 2.8.15 | CEB-5882 | #40 |
-| 3 | Implementar OpenTelemetry | CEB-5914 | #41 |
+|1|Upgrade Spring Boot 3.5.14 + Java 25|CEB-5855|#34|
+|2|Migrar SpringFox → SpringDoc OpenAPI 2.8.15|CEB-5882|#40|
+|3|Implementar OpenTelemetry|CEB-5914|#41|
 
 Detalle por fase:
 
-**Fase 1 — Spring Boot + Java (CEB-5855)**
+#### Fase 1 — Spring Boot + Java (CEB-5855)
+
 - Actualiza `pom.xml`: parent, `java.version`, librerías `novo-microservices-*`
 - Reemplaza JAXB CDDL por EDL (mantiene `javax.xml.bind` para Postilion SDK)
 - Elimina JSON-B, FindBugs, dependencias obsoletas
@@ -47,20 +50,22 @@ Detalle por fase:
 - Configura SpotBugs, Checkstyle, JaCoCo
 - Actualiza tests: `@MockBean` para producer/consumer, timeouts
 
-**Fase 2 — SpringDoc OpenAPI (CEB-5882)**
+#### Fase 2 — SpringDoc OpenAPI (CEB-5882)
+
 - Reemplaza anotaciones Swagger 2 → OpenAPI 3
 - Agrega `springdoc-openapi-starter-webflux-ui`
 - Crea/migra `OpenApiConfiguration.java`
 - Agrega `OpenApiConfigurationTest.java`
 
-**Fase 3 — OpenTelemetry (CEB-5914)**
+#### Fase 3 — OpenTelemetry (CEB-5914)
+
 - Agrega BOM `opentelemetry-instrumentation-bom-alpha`
 - Configura trazas, métricas y logs exportados vía OTLP a New Relic
 - Integra `OpenTelemetryAppender` en `log4j2.xml`
 
 ### Referencias internas
 
-```
+```txt
 .claude/skills/migrate-spring-boot-java25/
 ├── skill.md                        ← Lógica principal y flujo paso a paso
 └── references/
@@ -75,13 +80,13 @@ Detalle por fase:
 
 `api-tbs-zinli-orchestrator-microservice` — PRs #34, #40, #41 (Mayo 2026)
 
-| Antes | Después |
+|Antes|Después|
 |-------|---------|
-| Spring Boot 2.7.1 | Spring Boot 3.5.14 |
-| Java 11 | Java 25 |
-| SpringFox 3.0.0 | SpringDoc OpenAPI 2.8.15 |
-| Sin telemetría | OpenTelemetry 2.22.0-alpha → New Relic |
-| Versión 1.6.1 | Versión 2.2.0 |
+|Spring Boot 2.7.1|Spring Boot 3.5.14|
+|Java 11|Java 25|
+|SpringFox 3.0.0|SpringDoc OpenAPI 2.8.15|
+|Sin telemetría|OpenTelemetry 2.22.0-alpha → New Relic|
+|Versión 1.6.1|Versión 2.2.0|
 
 ### Precondiciones para aplicar el skill a otro microservicio
 
