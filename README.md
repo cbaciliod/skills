@@ -19,6 +19,20 @@ Genera commits, pull requests y CHANGELOG siguiendo [Conventional Commits](https
 
 ---
 
+### [`jira-activities`](./jira-activities/)
+
+Crea y redacta actividades Jira siguiendo los estándares del equipo POD 1 - Legión de Zeus de Novopayment.
+
+**Cuándo se activa:** cuando el mensaje contiene `jira`, `ceb`, `cdsi`, `sub-tarea`, `subtarea`, `crear ticket`, `solicitud infraestructura`.
+
+| Tipo | Descripción |
+|------|-------------|
+| **CEB** | Story de desarrollo del proyecto POD 1 - Legión de Zeus |
+| **Sub-tarea** | Subtarea técnica de un CEB — mapea 1:1 con una rama de código y un PR |
+| **CDSI** | Solicitud de configuración al equipo Cloud - DevOps |
+
+---
+
 ### [`migrate-spring-boot-java25`](./migrate-spring-boot-java25/)
 
 Guía y ejecuta la migración de microservicios Java de Novopayment desde **Spring Boot 2.7.x / Java 11** hacia **Spring Boot 3.5.14 / Java 25**.
