@@ -6,6 +6,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.0.0/) y el v
 
 ---
 
+## [1.1.1] - 2026-06-23
+
+### Fixed
+
+- fix(git-workflow): agregar validación de CHANGELOG, README y versión al flujo de PR y checklist
+
+### Changed
+
+- docs(readme): agregar skill jira-activities en README principal con tabla de tipos soportados
+
+---
+
 ## [1.1.0] - 2026-06-23
 
 ### Added
