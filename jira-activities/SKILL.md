@@ -4,7 +4,7 @@
 
 Activa este skill cuando el mensaje contenga (sin distinguir mayúsculas/minúsculas) cualquiera de estas palabras o sus variantes:
 
-`jira`, `actividad`, `crear tarea`, `nueva tarea`, `crear ticket`, `cdpp`, `pase a producción`, `sub-tarea`, `subtarea`, `ceb`, `historia`, `story`, `cdsi`, `solicitud infraestructura`, `gpbd`, `base de datos proyecto`, `control de solicitudes`
+`jira`, `actividad`, `crear tarea`, `nueva tarea`, `crear ticket`, `sub-tarea`, `subtarea`, `ceb`, `cdsi`, `solicitud infraestructura`, `control de solicitudes`
 
 Si la intención no es clara, pregunta: *¿Quieres crear una actividad en Jira?*
 
@@ -19,12 +19,9 @@ Si el usuario no especificó el tipo en su mensaje, presenta este menú:
 ```
 ¿Qué tipo de actividad Jira quieres crear?
 
-1. CDPP   — Control de Pase a Producción
-2. Sub-tarea — Subtarea de un ticket padre
-3. CEB    — (tipo de ticket de cambio)
-4. Historia — Historia de usuario / requerimiento
-5. CDSI   — Control de Solicitudes de Infraestructura
-6. GPBD   — Gestión de Proyectos de Base de Datos
+1. CEB       — Story de desarrollo (POD 1 - Legión de Zeus)
+2. Sub-tarea — Subtarea técnica de un CEB (1 rama = 1 sub-tarea)
+3. CDSI      — Solicitud de configuración a infraestructura (Cloud - DevOps)
 
 Responde con el número o el nombre del tipo.
 ```
@@ -35,14 +32,11 @@ Si el usuario ya mencionó el tipo (ej. "quiero crear un CDPP"), ir directamente
 
 Según el tipo elegido, lee el archivo de referencia correspondiente y sigue su flujo:
 
-| Tipo | Flujo | Referencias principales |
-|------|-------|------------------------|
-| CDPP | `forms/cdpp/SKILL.md` | `forms/cdpp/references/prompt-cdpp.md`, `forms/cdpp/references/prompt-anexo1.md`, `forms/cdpp/references/prompt-anexo4.md`, `forms/cdpp/references/tipos-cdpp.md` |
-| Sub-tarea | `forms/sub-tarea/references/prompt.md` | `forms/sub-tarea/templates/template.md` |
+| Tipo | Referencia | Template |
+|------|-----------|----------|
 | CEB | `forms/ceb/references/prompt.md` | `forms/ceb/templates/template.md` |
-| Historia | `forms/historia/references/prompt.md` | `forms/historia/templates/template.md` |
+| Sub-tarea | `forms/sub-tarea/references/prompt.md` | `forms/sub-tarea/templates/template.md` |
 | CDSI | `forms/cdsi/references/prompt.md` | `forms/cdsi/templates/template.md` |
-| GPBD | `forms/gpbd/references/prompt.md` | `forms/gpbd/templates/template.md` |
 
 ---
 

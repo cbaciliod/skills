@@ -6,21 +6,17 @@ Skill para crear y redactar actividades en Jira siguiendo los estándares del eq
 
 | Tipo | Descripción | Directorio |
 |------|-------------|------------|
-| **CDPP** | Control de Pase a Producción — ticket principal + subtareas + Anexo 1 + Anexo 4 | `forms/cdpp/` |
-| **Sub-tarea** | Subtarea estándar de un ticket padre (historia, CDPP, CDSI, GPBD) | `forms/sub-tarea/` |
-| **CEB** | Ticket de comité/evaluación de cambio | `forms/ceb/` |
-| **Historia** | Historia de usuario / requerimiento funcional | `forms/historia/` |
-| **CDSI** | Control de Solicitudes de Infraestructura | `forms/cdsi/` |
-| **GPBD** | Gestión de Proyectos de Base de Datos | `forms/gpbd/` |
+| **CEB** | Story de desarrollo del equipo POD 1 - Legión de Zeus | `forms/ceb/` |
+| **Sub-tarea** | Subtarea técnica de un CEB — mapea 1:1 con una rama de código | `forms/sub-tarea/` |
+| **CDSI** | Solicitud de configuración al equipo Cloud - DevOps | `forms/cdsi/` |
 
 ## Cómo usar
 
 Ejecuta el skill mencionando el tipo que necesitas:
 
-- *"Quiero crear un CDPP para el microservicio X"*
-- *"Necesito redactar una historia para el requerimiento Y"*
-- *"Crea un ticket CDSI para la solicitud de servidor"*
-- *"Genera una sub-tarea para el ticket NOVA-1234"*
+- *"Quiero crear un CEB para mejorar el orquestador"*
+- *"Crea una sub-tarea para el CEB-6222"*
+- *"Necesito un CDSI para configurar variables de entorno en TEST"*
 
 Si no especificas el tipo, el skill te preguntará con un menú numerado.
 
