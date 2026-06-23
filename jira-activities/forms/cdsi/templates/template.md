@@ -1,36 +1,27 @@
-# [CDSI][AMBIENTE] Tipo de solicitud — componente o sistema
-
-**Solicitante:** `<Nombre> — <Equipo>`
-**Fecha límite:** `<DD/MM/YYYY>`
-**Urgencia:** `<normal / urgente / bloqueante>`
-**Ticket relacionado:** `<NOVA-XXXX / CDPP-XXXX>` *(si aplica)*
+# Solicita configuración de `<tipo>` `<AMBIENTE>` - `<nombre-del-repo>` - `<sistema>`
 
 ---
 
-## Descripción de la solicitud
+Estimados, buen día. Se solicita la configuración de `<tipo>` para el microservicio
+[`<nombre-del-repo>`](`<link-github>`) en el ambiente `<AMBIENTE>`.
 
-*(Descripción clara de qué se necesita y para qué. Incluir el contexto que genera la solicitud.)*
+Ticket relacionado: `<CEB-XXXX>` — si aplica
 
-## Especificaciones técnicas
+---
 
-| Campo | Valor |
-|-------|-------|
-| Tipo de recurso | *(servidor / namespace / secret / acceso / pipeline / otro)* |
-| Componente/Sistema | *(nombre del sistema o servicio)* |
-| Ambiente | *(PRD / STG / DEV)* |
-| Configuración esperada | *(descripción técnica detallada)* |
+## Ambiente `<AMBIENTE>`
 
-*(Agregar tabla o lista de especificaciones adicionales si aplica. Ej: variables de entorno, reglas de firewall, permisos requeridos.)*
+```yaml
+- name: NOMBRE_VARIABLE_1
+  value: valor1
 
-## Justificación
+- name: NOMBRE_VARIABLE_2
+  value: valor2
 
-*(Por qué se necesita este recurso o configuración. Impacto si no se atiende.)*
+- name: NOMBRE_VARIABLE_N
+  value: valorN
+```
 
-## Criterio de aceptación
+---
 
-- [ ] *(Qué debe estar disponible / configurado para considerar la solicitud atendida)*
-- [ ] *(Validación adicional si aplica)*
-
-## Dependencias
-
-*(Otros tickets, aprobaciones o recursos que deben estar listos antes. Si no hay, escribir "Ninguna".)*
+> Agregar una sección por cada ambiente adicional si aplica (TEST / UAT / PRD).

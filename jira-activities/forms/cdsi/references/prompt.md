@@ -1,65 +1,66 @@
-# Estándar de Redacción — CDSI (Control de Solicitudes de Infraestructura)
+# Estándar de Redacción — CDSI (Control de Solicitudes Infraestructura)
 
-## ¿Cuándo usar este tipo?
+## ¿Qué es un CDSI?
 
-Un CDSI se crea para solicitudes formales al equipo de Infraestructura que requieren aprovisionamiento, configuración o modificación de recursos de infraestructura:
-- Nuevos servidores, VMs, contenedores o namespaces
-- Configuración de balanceadores, firewalls, certificados SSL
-- Gestión de secrets, variables de entorno o ConfigMaps en K8s
-- Accesos, permisos o roles en sistemas de infraestructura
-- Cambios en pipelines CI/CD o repositorios
+**CDSI** es el proyecto Jira donde se hacen solicitudes formales al equipo **Cloud - DevOps**.
+El tipo de issue es **"Solicitud de configuración"** — tipo custom del proyecto.
+
+Se usa para cualquier configuración que requiera intervención de infraestructura:
+
+- Variables de entorno en K8s (el caso más frecuente)
+- Secrets / ConfigMaps
+- Namespaces, permisos, accesos
+- Configuración de pipelines CI/CD
+- Certificados, balanceadores, firewall
 
 ---
 
 ## Flujo de creación
 
-### Paso 0 — Identificar el tipo de solicitud
-
-Preguntar al usuario:
-- ¿Qué tipo de recurso o configuración se solicita?
-- ¿En qué ambiente aplica? (PRD / STG / DEV)
-- ¿Es urgente o puede planificarse en el sprint?
-- ¿Hay ticket relacionado (historia, CDPP, etc.)?
-
 ### Paso 1 — Solicitar datos
 
-```
-Tipo de solicitud    : (servidor / namespace / secret / acceso / pipeline / otro)
-Componente/Sistema   : 
-Ambiente             : (PRD / STG / DEV / todos)
-Urgencia             : (normal / urgente / bloqueante)
-Solicitante          : (nombre + equipo)
-Fecha límite         : 
-Ticket relacionado   : (ej. NOVA-XXXX / CDPP-XXXX)
-Descripción técnica  : (qué se necesita y para qué)
-Criterio de aceptación: (cómo se valida que la solicitud fue atendida)
-Justificación        : (por qué se necesita)
+```text
+Tipo de configuración : (ej: variables de entorno, secret, namespace, acceso)
+Repo / Microservicio  : (nombre del repo en GitHub)
+Sistema/Herramienta   : (ej: New Relic, RabbitMQ, Kubernetes, ArgoCD)
+Ambientes             : (TEST / UAT / PRD — puede ser uno o varios)
+Variables / Config    : (lista de variables con nombre y valor por ambiente)
+Ticket CEB relacionado: (ej: CEB-6222 — si aplica)
 ```
 
-### Paso 2 — Generar el ticket CDSI
+### Paso 2 — Generar el ticket
 
-Usar el template en `cdsi/templates/template.md` como base.
+- Se crea **un ticket por ambiente** (TEST, UAT, PRD por separado)
+- Los tickets de ambientes adicionales se marcan como clones del primero
+- Usar el template en `cdsi/templates/template.md` como base
 
 ---
 
 ## Reglas de redacción
 
-**Título:**
-- Formato: `[CDSI][AMBIENTE] Tipo de solicitud — componente o sistema`
-- Ejemplos:
-  - `[CDSI][PRD] Crear namespace Kubernetes — api-tbs-new-service`
-  - `[CDSI][STG] Configurar Secret K8s — credenciales RabbitMQ`
-  - `[CDSI][PRD] Otorgar acceso SSH — equipo Backend api-payments`
+### Título (summary)
 
-**Descripción:**
-- Ser específico sobre el recurso solicitado (nombre, tipo, configuración esperada)
-- Incluir el contexto: qué lo genera (ticket, sprint, incidente)
-- Definir claramente cuándo la solicitud se considera atendida
-- Nunca inventar datos técnicos — usar `*(por definir)*`
+```text
+Solicita configuración de <tipo> <AMBIENTE> - <nombre-del-repo> - <sistema>
+```
 
-**Secciones obligatorias:**
-1. Descripción de la solicitud
-2. Especificaciones técnicas
-3. Justificación
-4. Criterio de aceptación
-5. Dependencias / Ticket relacionado
+Ejemplos reales:
+
+- `Solicita configuración de variables de entorno TEST - api-tbs-zinli-orchestrator-microservice - New Relic`
+- `Solicita configuración de variables de entorno UAT - api-tbs-zinli-orchestrator-microservice - New Relic`
+- `Solicita configuración de variables de entorno PRD - api-tbs-dbs-orchestrator-microservice - RabbitMQ`
+- `Solicita configuración de secret TEST - api-tbs-payment-microservice - credenciales DB`
+
+Reglas:
+
+- El ambiente va en mayúsculas: `TEST`, `UAT`, `PRD`
+- El nombre del repo va completo
+- El sistema o herramienta afectada va al final
+
+### Descripción
+
+- Tono directo: "Estimados, se solicita..."
+- Incluir link al repo en GitHub
+- Las variables en bloque de código YAML (`- name: / value:`)
+- Un bloque por ambiente si se piden varios en el mismo ticket
+- Sin secciones elaboradas — el equipo de infra solo necesita qué configurar y dónde
