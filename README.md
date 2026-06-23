@@ -33,6 +33,23 @@ Basado en el patrón probado en `api-tbs-zinli-orchestrator-microservice` (PRs #
 
 **Prerequisito:** cada migración requiere identificar los tickets Jira asignados al microservicio antes de iniciar.
 
+---
+
+### [`jira-activities`](./jira-activities/)
+
+Crea y redacta actividades en Jira siguiendo los estándares del equipo de Novopayment.
+
+**Cuándo se activa:** cuando se necesita crear o documentar un ticket Jira (CEB, sub-tarea, CDSI, CDPP, historia, GPBD).
+
+|Tipo|Descripción|
+|------|-------------|
+|**CEB**|Story de desarrollo del equipo POD 1 - Legión de Zeus|
+|**Sub-tarea**|Subtarea técnica de un CEB — mapea 1:1 con una rama de código|
+|**CDSI**|Solicitud de configuración al equipo Cloud - DevOps|
+|**CDPP**|Cambio de configuración en producción (incluye playbooks para microservicios K8s)|
+|**Historia**|Historia de usuario genérica|
+|**GPBD**|Proyecto de base de datos|
+
 ## Instalación
 
 ```bash

@@ -30,7 +30,7 @@ Usa este flujo solo si el usuario pide un plan o expresa incertidumbre ("no sé 
 2. **¿Hay cambios pendientes de commitear?** → Genera commits atómicos (uno por unidad lógica) con `commit-standard.md`. Continúa al paso 3 cuando los commits estén listos.
 3. **¿Falta título o descripción del PR?** → Completa ambos con `pr-template.md`. Continúa al paso 4.
 4. **¿El PR está listo para abrir?** → Pasa el checklist de `pr-guidelines.md`. Si algún ítem falla, resuélvelo antes de continuar.
-5. **¿Se completó el merge?** → Actualiza el CHANGELOG con `commit-standard.md`.
+5. **¿Se completó el merge?** → Actualiza CHANGELOG, README y versión con `commit-standard.md`.
 
 ---
 
@@ -44,3 +44,32 @@ Usa este flujo solo si el usuario pide un plan o expresa incertidumbre ("no sé 
 - Si el usuario pide generar commits o PR sin proporcionar diff ni lista de cambios, pregunta: "Por favor pega el `git diff` o la lista de archivos cambiados y un resumen de los cambios."
 - Para breaking changes usa `tipo!: descripción` y agrega footer `BREAKING CHANGE: <qué cambia o rompe>`.
 - Si no hay ticket CEB disponible, omite la línea `Refs:` del commit y del cuerpo del PR; no inventes ni supongas un ID.
+
+## Validación de CHANGELOG, README y versión
+
+Aplica **siempre** al generar un PR o al hacer commit de tipo `feat`, `fix`, `hotfix` o `feat!`:
+
+### 1. CHANGELOG
+
+- Verifica si existe `CHANGELOG.md` en la raíz del repositorio.
+- Si el PR incluye commits `feat`, `fix`, `hotfix` o `feat!`, el CHANGELOG **debe** tener una entrada nueva bajo la versión correspondiente.
+- Si no existe la entrada, genera el bloque y avisa al usuario que debe incluirlo en el PR.
+
+### 2. README
+
+- Si el PR agrega una nueva funcionalidad visible (`feat`), verifica que el `README.md` refleje el cambio.
+- Si hay una sección de "Features", "Capacidades" o tabla de funcionalidades, comprueba que el ítem nuevo esté listado.
+- Si el README no está actualizado, indícalo al usuario como ítem pendiente antes de abrir el PR.
+
+### 3. Versionado semántico
+
+Determina el tipo de bump según los commits del PR:
+
+| Commits presentes | Bump |
+|-------------------|------|
+| `feat!` / `BREAKING CHANGE` | **MAJOR** — x.0.0 |
+| Al menos un `feat` | **MINOR** — 0.x.0 |
+| Solo `fix` / `hotfix` / `docs` / `refactor` / `test` | **PATCH** — 0.0.x |
+
+- Si no hay un archivo de versión (`pom.xml`, `package.json`, `version.txt`, etc.) y el repo usa solo CHANGELOG, incluye el número de versión en el encabezado del CHANGELOG.
+- Si el usuario no especificó versión, propón el bump calculado y pide confirmación antes de incluirlo.
