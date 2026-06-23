@@ -25,7 +25,7 @@ Proporciona los datos del caso al invocar el skill:
 ```
 - Cliente:
 - País:
-- Tipo de pase (AGENDADO | EMERGENTE):
+- Tipo de pase (NORMAL | STANDARD | EMERGENTE):
 - Genera indisponibilidad (SI | NO):
 - Equipos ejecutores:
 - Ticket de certificación (CEB-XXXX):

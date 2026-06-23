@@ -20,9 +20,17 @@ pega su contenido o indícame si procedo sin él."
 
 | Tarea | Leer |
 |-------|------|
-| Generar CDPP | `references/prompt-cdpp.md` |
+| Ver tipos validados y lecciones aprendidas | `APRENDIZAJES.md` |
+| Determinar tipo de pase | `references/tipos-cdpp.md` |
+| Usar plantilla validada (si existe playbook) | `playbooks/<tipo>/` |
+| Generar CDPP (sin playbook) | `references/prompt-cdpp.md` |
+| Generar subtareas (Pasos) | `references/tarea-cdpp.md` |
 | Generar Anexo 1 — Plan de Pase a Producción | `references/prompt-anexo1.md` |
 | Generar Anexo 4 — Plan de Pruebas Postproducción | `references/prompt-anexo4.md` |
+
+**Prioridad de fuentes:** Si existe un playbook validado para el tipo de pase
+solicitado, usar sus plantillas en lugar del prompt genérico. Los playbooks
+contienen patrones extraídos de tickets reales aprobados por el Líder Técnico.
 
 ---
 
@@ -31,10 +39,25 @@ pega su contenido o indícame si procedo sin él."
 Usa este flujo solo si el usuario pide un plan o expresa incertidumbre. En
 cualquier otro caso, responde directamente a la tarea solicitada.
 
-1. **¿Tiene todos los datos del caso?**
-   - No → Presenta el formulario de datos (ver sección "Formulario de entrada")
-     y espera respuesta antes de continuar.
-   - Sí → Continuar al paso 2.
+0. **Seleccionar tipo de pase**
+   Lee `references/tipos-cdpp.md` y pregunta al usuario:
+   > "¿Qué tipo de pase es? 1. Microservicio K8s  2. Base de Datos  3. WAR/JAR
+   > 4. Configuración pura  5. Proceso Agendado/Batch  6. Infraestructura"
+   El tipo determina: formulario de datos, equipo ejecutor, si genera downtime,
+   template de subtarea y ejemplo de referencia a aplicar.
+
+1. **¿Tiene los datos del caso? — Condicional de entrada**
+   Pregunta al usuario:
+   > "¿Tienes un ticket de Jira con la información del cambio (CEB, historia,
+   > incidente)? Si es así, comparte el link y lo leo directamente.
+   > Si no, completa el formulario a continuación."
+
+   - **Con link Jira** → leer el ticket con el MCP de Atlassian, extraer:
+     componente, versión, descripción del cambio, variables, equipo, ticket CEB.
+     Confirmar los datos extraídos al usuario antes de continuar.
+   - **Sin link** → presentar el formulario específico del tipo seleccionado
+     (ver `references/tipos-cdpp.md`, sección "Formulario de datos") y esperar
+     respuesta antes de continuar.
 
 2. **¿El usuario quiere generar el CDPP?**
    - Sí → Lee `references/prompt-cdpp.md` y genera el CDPP completo.
@@ -45,6 +68,14 @@ cualquier otro caso, responde directamente a la tarea solicitada.
    - Sí → Autenticar con MCP de Atlassian y crear el ticket (ver sección
      "Integración Jira").
    - No → Entregar el contenido en Markdown para copiar manualmente.
+
+3b. **¿Crear las subtareas (Pasos)?**
+   - Siempre crear o preguntar. Si el usuario no indicó los pasos de ejecución,
+     preguntar: "¿Cuáles son los pasos del pase? Ej: PASO 1 Infra Middleware,
+     PASO 2 Infra BD…"
+   - Sí → Leer `references/tarea-cdpp.md`, generar el contenido de cada subtarea
+     y crearlas en Jira como Sub-task hijas del ticket CDPP principal.
+   - No → Entregar el contenido Markdown de cada PASO para copiar manualmente.
 
 4. **¿El usuario quiere el Anexo 1?**
    - Sí → Lee `references/prompt-anexo1.md` y genera el Anexo 1 usando el
@@ -63,7 +94,7 @@ Si faltan datos, presenta este formulario y espera que el usuario lo complete:
 ```
 - **Cliente:**
 - **País:**
-- **Tipo de pase (AGENDADO | EMERGENTE):**
+- **Tipo de pase (NORMAL | STANDARD | EMERGENTE):**
 - **Genera indisponibilidad (SI | NO):**
 - **Equipos ejecutores:**
 - **Ticket de certificación (CEB-XXXX):**
