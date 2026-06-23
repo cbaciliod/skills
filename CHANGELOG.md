@@ -6,6 +6,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.0.0/) y el v
 
 ---
 
+## [1.1.0] - 2026-06-23
+
+### Added
+
+- feat(jira-activities): nuevo skill para crear y redactar actividades Jira siguiendo estándares del equipo
+- feat(jira-activities/cdpp): skill CDPP con playbooks por tipo de pase, Anexo 1, Anexo 4 y subtareas
+- feat(jira-activities/ceb): estándar y template para Stories CEB (POD 1 - Legión de Zeus), basados en ticket real CEB-6222
+- feat(jira-activities/sub-tarea): estándar y template para subtareas técnicas, formato `[TIPO] — descripción`, mapeo 1:1 con rama de código
+- feat(jira-activities/cdsi): estándar y template para solicitudes a Cloud - DevOps, basados en ticket real CDSI-11714
+
+### Changed
+
+- chore(jira-activities/skill): menú limitado a CEB, sub-tarea y CDSI — CDPP, Historia y GPBD fuera del menú hasta revisión
+
+---
+
 ## [1.0.1] - 2026-06-05
 
 - style(readme): compactar formato de tablas en README principal
