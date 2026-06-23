@@ -1,13 +1,16 @@
-# Estándar de Redacción — Sub-tarea
+# Estándar de Redacción — Sub-tarea CEB
 
 ## ¿Cuándo usar este tipo?
 
-Una sub-tarea es un ticket hijo dentro de un ticket padre en Jira. Puede ser subtarea de:
-- Una Historia de usuario
-- Un CDPP (pases a producción)
-- Un CDSI (solicitudes de infraestructura)
-- Un GPBD (proyectos de BD)
-- Cualquier epic o tarea padre
+Una sub-tarea es un ticket hijo de un CEB (Story del proyecto POD 1 - Legión de Zeus). Representa una unidad de trabajo técnico que mapea 1:1 con una rama de código y un PR.
+
+Puede ser de tipo:
+
+- **feat** — nueva funcionalidad o implementación
+- **fix** — corrección de bug
+- **chore** — tarea técnica sin impacto funcional (migración, refactor, configuración)
+- **test** — pruebas unitarias, de carga o integración
+- **docs** — documentación o plan de desarrollo
 
 > Si la sub-tarea es parte de un CDPP, usar `cdpp/references/tarea-cdpp.md` en su lugar.
 
@@ -15,26 +18,16 @@ Una sub-tarea es un ticket hijo dentro de un ticket padre en Jira. Puede ser sub
 
 ## Flujo de creación
 
-### Paso 0 — Identificar el ticket padre
-
-Preguntar al usuario:
-- ¿Cuál es el ticket padre? (número Jira)
-- ¿Cuál es el propósito de la sub-tarea?
-- ¿Quién será el responsable/asignado?
-
 ### Paso 1 — Solicitar datos
 
-Completar este formulario si el usuario no los proporciona:
-
-```
-Ticket padre    : (ej. NOVA-1234 / CDPP-XXXX)
-Título          : (acción concreta — verbo + objeto)
-Equipo/Squad    : (ej. Backend, Infra Middleware, QA)
-Responsable     : (nombre del asignado)
-Estimación      : (horas o story points)
-Sprint/Versión  : (opcional)
-Descripción     : (qué se hace y por qué)
-Criterio aceptación: (cuándo se considera lista)
+```text
+Ticket padre (CEB)  : (ej. CEB-6222)
+Tipo                : (feat / fix / chore / test / docs)
+Descripción corta   : (qué se va a cambiar — verbo + objeto)
+Repo                : (nombre del repositorio afectado)
+Responsable         : (nombre del asignado)
+Contexto/motivación : (por qué se hace este cambio)
+Criterios aceptación: (cuándo se considera lista)
 ```
 
 ### Paso 2 — Generar la sub-tarea
@@ -45,23 +38,29 @@ Usar el template en `sub-tarea/templates/template.md` como base.
 
 ## Reglas de redacción
 
-**Título:**
-- Formato: `[EQUIPO] Acción — descripción corta`
-- Usar verbos de acción: *Configurar, Desplegar, Validar, Crear, Actualizar, Revisar*
-- Ejemplos:
-  - `[Infra Middleware] Configurar variables de entorno — microservicio api-tbs-payment`
-  - `[QA] Validar flujo de pago recurrente en ambiente staging`
-  - `[Backend] Actualizar dependencia hikari-cp a 5.1.0`
+### Título (summary)
 
-**Descripción:**
-- Explicar QUÉ se hace, POR QUÉ se hace, y CÓMO se valida
-- Incluir pasos de ejecución si es una tarea técnica
-- Incluir criterio de aceptación claro
+```text
+[TIPO] — descripción corta del cambio
+```
+
+Ejemplos:
+
+- `[FEAT] — activar automaticAck en consumer de respuestas`
+- `[FIX] — corregir tipo AMQP en propiedades numéricas de cola`
+- `[CHORE] — migrar SpringFox a SpringDoc OpenAPI`
+- `[TEST] — agregar suite de pruebas de carga k6`
+
+Reglas:
+
+- El tipo va en mayúsculas entre corchetes
+- La descripción es concisa, en minúsculas, empieza con verbo en infinitivo
+- El nombre del repo va dentro de la descripción del ticket, no en el título
+
+### Descripción
+
+- Incluir el repo afectado como primer dato
+- Puede tener formato user story (`Como / Quisiera / Para`) o directo según complejidad
+- Siempre incluir criterios de aceptación con `[ ]`
+- Incluir antes/después en snippet de código cuando aplique
 - Nunca inventar datos técnicos — usar `*(por definir)*`
-
-**Secciones obligatorias (tareas técnicas):**
-1. ¿Qué se va a hacer?
-2. ¿Por qué se hace?
-3. Pasos de ejecución
-4. Validación / Criterio de aceptación
-5. Dependencias (si las hay)

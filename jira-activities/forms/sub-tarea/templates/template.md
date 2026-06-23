@@ -1,31 +1,33 @@
-# [EQUIPO] Acción — descripción corta
+# [TIPO] — descripción corta del cambio
 
-**Ticket padre:** `<TICKET-PADRE>`
+**Ticket padre:** `CEB-XXXX`
+**Repo:** `<nombre-del-repositorio>`
 **Asignado a:** `<Nombre Responsable>`
-**Estimación:** `<X horas / X SP>`
 
 ---
 
-## ¿Qué se va a hacer?
+## Contexto
 
-*(Describe concisamente la tarea. Qué se crea, modifica, configura o valida.)*
+Por qué se hace este cambio. Síntoma o problema que resuelve. Puede referenciar el CEB padre o un commit de origen.
 
-## ¿Por qué se hace?
+## Cambio requerido
 
-*(Contexto o requerimiento que origina esta tarea. Referencia al ticket padre o al motivo de negocio.)*
+Descripción técnica de qué se modifica. Si aplica, incluir snippet antes/después:
 
-## Pasos de ejecución
+```text
+# ANTES
+<código o configuración actual>
 
-1. *(Paso 1)*
-2. *(Paso 2)*
-3. *(Paso N)*
+# DESPUÉS
+<código o configuración propuesta>
+```
 
-## Validación / Criterio de aceptación
+## Criterios de aceptación
 
-- [ ] *(Criterio 1)*
-- [ ] *(Criterio 2)*
-- [ ] *(Criterio N)*
+- \[ \] *(criterio verificable 1)*
+- \[ \] *(criterio verificable 2)*
+- \[ \] *(criterio verificable N)*
 
 ## Dependencias
 
-*(Indicar si depende de otra sub-tarea, ticket, o aprobación previa. Si no hay dependencias, escribir "Ninguna".)*
+Indicar si depende de otra sub-tarea o ticket. Si no hay, escribir "Ninguna".
