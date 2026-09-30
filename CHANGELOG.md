@@ -6,6 +6,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.0.0/) y el v
 
 ---
 
+## [1.2.0] - 2026-09-30
+
+### Added
+
+- feat(novo-legacy-migration-context): nuevo skill que recolecta el contexto de migración legacy → Go (`.migration-context.yaml`) y genera tickets Jira para el PO
+- feat(novo-legacy-migration-endpoint): nuevo skill que migra un endpoint legacy a Go con go-bricks, por fases apiladas (gh-stack) o seriales, con subcomandos `list`, `status`, `roadmap`, `verify-parity`, `parity-solve`, `usecases`, `techdoc` y `devplan`
+
+---
+
 ## [1.1.1] - 2026-06-23
 
 ### Fixed

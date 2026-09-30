@@ -50,6 +50,31 @@ Crea y redacta actividades en Jira siguiendo los estándares del equipo de Novop
 |**Historia**|Historia de usuario genérica|
 |**GPBD**|Proyecto de base de datos|
 
+---
+
+### [`novo-legacy-migration-context`](./novo-legacy-migration-context/)
+
+Inicializa y mantiene el contexto de migración de un servicio legacy a Go (`.migration-context.yaml`): repos fuente, properties, BD, auth, cifrado, servicios externos e inventario completo de endpoints.
+
+**Subcomando:** `/migration-context ticket <endpoint>` genera el ticket Jira (HU) para el PO.
+
+**Requiere:** acceso a los repos legacy y al repo Go destino; credenciales Jira solo si se integra con Jira.
+
+---
+
+### [`novo-legacy-migration-endpoint`](./novo-legacy-migration-endpoint/)
+
+Migra **un** endpoint legacy a Go sobre go-bricks, fase por fase (≤400 líneas / ≤10 archivos), con PRs apilados con `gh-stack` por defecto.
+
+|Subcomando|Qué hace|
+|------------|----------|
+|`/migrate <endpoint>`|Migración por fases|
+|`list` / `status` / `roadmap`|Inventario, detalle por fase y orden recomendado|
+|`verify-parity` / `parity-solve`|Simetría Java↔Go y plan de correcciones|
+|`usecases` / `techdoc` / `devplan`|Casos de prueba, doc técnica con diagramas y Plan de Desarrollo Jira|
+
+**Requiere:** `.migration-context.yaml` (skill anterior), `gh` ≥ 2.90 con `gh-stack` (si no, va serial), `make check` y los skills `go-dev-technical` y `go-bricks-modules`.
+
 ## Instalación
 
 ```bash

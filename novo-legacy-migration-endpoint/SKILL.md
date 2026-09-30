@@ -1,0 +1,2266 @@
+---
+name: novo-legacy-migration-endpoint
+description: "Migrates a single legacy endpoint to Go using the context from novo-legacy-migration-context. Supports subcommands: /migrate list (all endpoints + status), /migrate status <name> (phase detail), /migrate roadmap (full migration roadmap with priorities). Uses go-bricks as the mandatory architectural foundation. Encodes 50+ battle-tested rules from real production migrations, and builds to the go-dev-technical review standard so generated code passes review on the first pass: a self-review gate closes every phase, and the seven decisions that are cheap at construction time (response funnel, no parallel code/message lists, adapter-owned transport, shared-reader reuse, shared bootstrap, copied bus contract names, QueryBuilder always) are taken before the first line is written. Phases are STACKED by default with gh-stack — phase N+1 branches off phase N without waiting for its merge, so the whole stack reviews in parallel — falling back to serial for phases gated on TEST certification, unverified money-path parity, a design that depends on the previous review, or a merge queue."
+license: MIT
+metadata:
+  author: galopez-shark
+  version: "4.12.0"
+  domain: migration
+  triggers: migration-endpoint, migrate, novo-migrate, migrar endpoint, migrate endpoint, migrate list, migrate status, migrate roadmap, migrate devplan, plan-dev
+  role: specialist
+  scope: implementation
+  output-format: code
+  related-skills: novo-legacy-migration-context, go-dev-technical, go-bricks-modules, golang-pro, golang-testing, openapi-spec-generation
+---
+
+# Migrate Endpoint
+
+Migrates a single legacy endpoint to an idiomatic Go microservice. Requires `.migration-context.yaml` from `novo-legacy-migration-context`.
+
+**Supports subcommands:**
+- `/migrate` or `/migrate <endpoint>` — migrate a specific endpoint (default behavior)
+- `/migrate list` — list all endpoints with migration status
+- `/migrate status <endpoint>` — show phase-level detail for one endpoint
+- `/migrate roadmap` — show the full migration roadmap with priorities and estimates
+- `/migrate verify-parity <endpoint>` (alias `simetria`) — validate Java↔Go business-logic symmetry for one endpoint (read-only report)
+- `/migrate parity-solve <endpoint> cases (<ids>)` (alias `solve-parity`) — plan fixes for the selected verify-parity divergences (≤300 new lines / ≤10 files per phase)
+- `/migrate usecases <endpoint>` (alias `casos`) — extract the Java use-case / test-scenario list (testRigor-style, con IDs `EST-NN`) — QA testing del Go + base de la tabla de escenarios del Plan de Desarrollo
+- `/migrate techdoc <endpoint>` (alias `doc-tecnico`) — generate the technical doc (scope, glossary, structure, construction) + class/flow/data diagrams as images (asks for the output folder)
+- `/migrate devplan <endpoint>` (alias `plan-dev`) — generate the Jira development plan (Plan de Desarrollo) for an endpoint: context, technical description, files, acceptance criteria, DoD, technical notes — formatted for direct update to Jira ticket description
+- `/migrate help` (alias `?`) — show available subcommands, usage, and key rules
+
+---
+
+## Subcommand: `/migrate help` (alias `?`)
+
+Print the help card below. Trigger when the user types `/migrate help`, `/migrate ?`, or asks
+"what can this do / what commands does it have / how do I use it".
+
+```text
+migrate — migrate ONE legacy endpoint to Go (go-bricks), phase by phase.
+
+SUBCOMMANDS
+  /migrate <endpoint>          Migrate an endpoint (default). Reads Java, plans phases, executes
+                               domain → repository → service → handler → docs, one branch per phase,
+                               apiladas con gh-stack por defecto (sin esperar merges).
+  /migrate list                Table of every endpoint + migration status.
+  /migrate roadmap             Recommended wave order + effort estimates.
+  /migrate status <endpoint>   Phase-level detail for one endpoint.
+  /migrate verify-parity <ep>  Read-only Java↔Go business-logic symmetry report (alias: simetria).
+  /migrate parity-solve <ep> cases (1,2,3)
+                               Plan fixes for the SELECTED verify-parity cases. Roadmap respects a
+                               STRICTER cap: ≤300 new lines / ≤10 files per phase (alias: solve-parity).
+  /migrate usecases <ep>       Extract the Java use-case / test-scenario list (happy + negative + edge
+                               + external + auth), testRigor-style con IDs EST-NN — QA del Go +
+                               base de la tabla de escenarios del Plan de Desarrollo (alias: casos).
+  /migrate techdoc <ep>        Technical doc (scope, glossary, structure, construction) + class/flow/
+                               data diagrams as images. ASKS for the output folder (alias: doc-tecnico).
+  /migrate devplan <ep>        Jira development plan (Plan de Desarrollo): context, tech description,
+                               files, acceptance criteria, DoD, tech notes. Updates Jira ticket
+                               description directly (alias: plan-dev).
+  /migrate help                This help (alias: ?).
+
+REQUIRES  .migration-context.yaml — run /migration-context first to create it.
+
+KEY RULES
+  • FASES APILADAS por defecto (gh-stack): la fase N+1 arranca sobre la rama de la N sin esperar
+    el merge, y todas se revisan en paralelo. Serial sólo cuando toca: fase que necesita
+    certificación en TEST, fase de dinero con paridad sin verificar, fase cuyo diseño depende
+    del review de la anterior, o repo con merge queue. El modo se propone en el roadmap (STEP 1).
+    Requiere `gh extension install github/gh-stack` (gh ≥ 2.90.0); si no está, avisa y va serial.
+  • gh stack sync después de CADA merge y de cada cambio de review en un PR de abajo — si no,
+    el diff que ve el reviewer está mal. El merge es todo-o-nada hasta el PR elegido.
+  • Una fase apilada es `en review` (con su base: PR #124 → #123), NO `merged`, hasta que el
+    stack aterrice.
+  • ≤400 new lines / ≤10 files per phase; bump version each phase. Apilar NO relaja estos caps.
+  • go-bricks is mandatory. Canonical reference: github.com/novopayment/mdw-welcome-project-go.
+  • If run from the legacy repo, ask for the Go target repo (git) before doing anything.
+  • Parity: error codes/messages/flows must match Java (flag bugs, don't replicate).
+  • verify-parity always checks out main first.
+  • The route-enabling phase adds the endpoint to the Postman collection.
+  • PR title: `feat: <desc lowercase>` ≤72 chars (NKH1), NO ticket in title — put `Refs: CEB-XXXX`
+    in the body. No commit without explicit approval.
+```
+
+After printing, ask what the user wants to do next (list / roadmap / migrate / verify-parity).
+
+---
+
+## Subcommand: `/migrate list`
+
+Load `.migration-context.yaml` and display the endpoint inventory as a table:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                           ENDPOINT MIGRATION STATUS                                    │
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│ MODULE: accounts                                                          4/4 done ✅  │
+│  #  │ Endpoint              │ HTTP │ Status     │ Phase    │ Ticket   │ Complexity     │
+│  1  │ getBalance             │ GET  │ ✅ done     │ —        │ CEB-5479 │ ★★★☆☆ medium  │
+│  2  │ getCardHolder          │ GET  │ ✅ done     │ —        │ CEB-5479 │ ★★★☆☆ medium  │
+│  3  │ getCVV2                │ GET  │ ✅ done     │ —        │ CEB-5479 │ ★★☆☆☆ simple  │
+│  4  │ preventiveBlock        │ PUT  │ ✅ done     │ —        │ CEB-5602 │ ★★★★☆ medium  │
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│ MODULE: funds_transfer                                                    3/3 done ✅  │
+│  5  │ cashIn                 │ POST │ ✅ done     │ —        │ CEB-5479 │ ★★★★☆ medium  │
+│  6  │ cashOut                │ POST │ ✅ done     │ —        │ CEB-5479 │ ★★★★☆ medium  │
+│  7  │ p2p                    │ POST │ ✅ done     │ —        │ CEB-5480 │ ★★★★★ complex │
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│ MODULE: cards (new)                                                    0/6 not started │
+│  8  │ cancelCard             │ PUT  │ ❌ pending  │ —        │ —        │ ★★★★☆ medium  │
+│  9  │ physicalCardAssign     │ POST │ ❌ pending  │ —        │ —        │ ★★★★★ complex │
+│ 10  │ setCardPin             │ POST │ ❌ pending  │ —        │ —        │ ★★★☆☆ medium  │
+│ 11  │ changePin              │ PUT  │ ❌ pending  │ —        │ —        │ ★★★☆☆ medium  │
+│ 12  │ cardReissue            │ POST │ ❌ pending  │ —        │ —        │ ★★★★★ complex │
+│ 13  │ getCardInfo            │ GET  │ ❌ pending  │ —        │ —        │ ★★☆☆☆ simple  │
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│ MODULE: enrolls (new)                                                  0/5 not started │
+│ 14  │ enrollment             │ POST │ ❌ pending  │ —        │ —        │ ★★★★★ complex │
+│ 15  │ enrollmentUpdate       │ PUT  │ ❌ pending  │ —        │ —        │ ★★★☆☆ medium  │
+│ 16  │ enrollmentDelete       │ PUT  │ ❌ pending  │ —        │ —        │ ★★★☆☆ medium  │
+│ 17  │ enrollAndIssue         │ POST │ ❌ pending  │ —        │ —        │ ★★★★★ complex │
+│ 18  │ getLastCardToken       │ GET  │ ❌ pending  │ —        │ —        │ ★★☆☆☆ simple  │
+├─────────────────────────────────────────────────────────────────────────────────────────┤
+│ SUMMARY                                                                                │
+│ ✅ Done: 13  │ 🔄 In Progress: 0  │ ❌ Not Started: 11  │ 🚫 Blocked: 0              │
+│ Est. remaining phases: ~47-62                                                          │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Data source**: Read `endpoint_inventory` from `.migration-context.yaml`. If the file doesn't exist, tell the user to run `/migration-context` first.
+
+**After displaying**: Ask if the user wants to:
+1. Start migrating a specific endpoint
+2. Update the status of any endpoint
+3. View the roadmap
+
+---
+
+## Subcommand: `/migrate status <endpoint>`
+
+Show phase-level detail for a specific endpoint. Accept endpoint by name, number, or Java method name.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ ENDPOINT: cancelCard (#8)                                        │
+│ Module: cards │ HTTP: PUT /user/:tag/card/:token/cancel          │
+│ Java: CardResource.java → doOnCancelledCard                      │
+│ Ticket: CEB-5650 │ Complexity: ★★★★☆ medium                     │
+├──────────────────────────────────────────────────────────────────┤
+│ MIGRATION PHASES                                                 │
+│                                                                  │
+│ Phase 1 — Domain + Repository                                    │
+│   Branch: feature/CEB-5650-domain-repository                     │
+│   Status: ✅ merged (PR #95, 2026-05-10)                         │
+│   Files: 6 │ Lines: 320                                          │
+│                                                                  │
+│ Phase 2 — Service                                                │
+│   Branch: feature/CEB-5650-service                               │
+│   Status: 🔄 in_progress (started 2026-05-12)                   │
+│   Files: 4 │ Lines: ~280 (estimated)                             │
+│                                                                  │
+│ Phase 3 — Handler                                                │
+│   Status: ⏳ pending (blocked by Phase 2)                        │
+│                                                                  │
+│ Phase 4 — Docs                                                   │
+│   Status: ⏳ pending (blocked by Phase 3 + TEST cert)            │
+├──────────────────────────────────────────────────────────────────┤
+│ DEPENDENCIES                                                     │
+│ External calls: card_issuer (SGC), payment_connector             │
+│ DB tables: CARDS, CARDS_TOKEN, CARD_STATUS_HISTORY               │
+│ Encryption: JWE request + response                               │
+│ go-bricks: server.HandlerContext, cryptoutil, httpclient.Client  │
+├──────────────────────────────────────────────────────────────────┤
+│ NOTES                                                            │
+│ - Shares card lookup with accounts module (cardutils.FindCard)   │
+│ - Uses compensation pattern (like preventiveBlock)               │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**If the endpoint has no phases yet** (status=not_started), show the analysis from STEP 0 instead:
+- Read Java source automatically
+- Present the endpoint summary table
+- Ask if the user wants to start the migration
+
+**Update `.migration-context.yaml`** after showing status if any phase changed.
+
+**In stacked mode the status box changes two things** (the example above is the serial
+shape): each submitted phase carries its PR and base, and `pending` says what it really
+waits for — the previous phase *submitted*, not merged:
+
+```
+│ Phase 2 — Repository                                             │
+│   Branch: feature/CEB-5650-repository                            │
+│   Status: 🔄 en review — PR #124 → #123                          │
+│                                                                  │
+│ Phase 3 — Handler                                                │
+│   Status: ⏳ pending (sobre #124, arranca sin esperar su merge)  │
+```
+
+Run `gh stack view` before printing the box and reconcile it with the file — the stack on
+disk is the authority, `.migration-context.yaml` is the convenience. If they disagree, say
+so instead of printing the file's version.
+
+---
+
+## Subcommand: `/migrate roadmap`
+
+Show the full migration roadmap with recommended order and effort estimates.
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                      MIGRATION ROADMAP                                          │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│ PRIORITY ORDER (recommended — simple first, build up patterns)                  │
+│                                                                                 │
+│ Wave 1 — Quick wins (simple endpoints, establish module patterns)               │
+│ ┌───┬──────────────────────┬────────────┬────────────┬───────────────┐          │
+│ │ # │ Endpoint             │ Module     │ Complexity │ Est. Phases   │          │
+│ ├───┼──────────────────────┼────────────┼────────────┼───────────────┤          │
+│ │ 1 │ getCardInfo          │ cards      │ ★★☆ simple │ 3-4 phases    │          │
+│ │ 2 │ getLastCardToken     │ enrolls    │ ★★☆ simple │ 3-4 phases    │          │
+│ └───┴──────────────────────┴────────────┴────────────┴───────────────┘          │
+│                                                                                 │
+│ Wave 2 — Medium complexity (reuse patterns from Wave 1)                         │
+│ ┌───┬──────────────────────┬────────────┬────────────┬───────────────┐          │
+│ │ # │ Endpoint             │ Module     │ Complexity │ Est. Phases   │          │
+│ ├───┼──────────────────────┼────────────┼────────────┼───────────────┤          │
+│ │ 3 │ cancelCard           │ cards      │ ★★★★ med  │ 4-5 phases    │          │
+│ │ 4 │ setCardPin           │ cards      │ ★★★☆ med  │ 4 phases      │          │
+│ │ 5 │ changePin            │ cards      │ ★★★☆ med  │ 4 phases      │          │
+│ │ 6 │ enrollmentUpdate     │ enrolls    │ ★★★☆ med  │ 4 phases      │          │
+│ │ 7 │ enrollmentDelete     │ enrolls    │ ★★★☆ med  │ 4 phases      │          │
+│ └───┴──────────────────────┴────────────┴────────────┴───────────────┘          │
+│                                                                                 │
+│ Wave 3 — Complex (external calls, transactions, multi-table)                    │
+│ ┌───┬──────────────────────┬────────────┬────────────┬───────────────┐          │
+│ │ # │ Endpoint             │ Module     │ Complexity │ Est. Phases   │          │
+│ ├───┼──────────────────────┼────────────┼────────────┼───────────────┤          │
+│ │ 8 │ physicalCardAssign   │ cards      │ ★★★★★ cpx │ 5-7 phases    │          │
+│ │ 9 │ cardReissue          │ cards      │ ★★★★★ cpx │ 5-7 phases    │          │
+│ │10 │ enrollment           │ enrolls    │ ★★★★★ cpx │ 5-7 phases    │          │
+│ │11 │ enrollAndIssue       │ enrolls    │ ★★★★★ cpx │ 6-8 phases    │          │
+│ └───┴──────────────────────┴────────────┴────────────┴───────────────┘          │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│ TOTALS                                                                          │
+│ Endpoints remaining: 11                                                         │
+│ Est. total phases: 47-62                                                        │
+│ Modules to create: cards (new), enrolls (new)                                   │
+│                                                                                 │
+│ DEPENDENCIES BETWEEN ENDPOINTS                                                  │
+│ - cards module: cancelCard should go first (establishes card patterns)           │
+│ - enrolls module: getLastCardToken first (simplest, sets up module structure)    │
+│ - enrollAndIssue depends on enrollment (shares validation + DB writes)           │
+│                                                                                 │
+│ go-bricks COMPONENTS NEEDED                                                     │
+│ All waves: server.HandlerContext, database.Interface, logger.Logger             │
+│ Wave 2+: cryptoutil (JWE), httpclient.Client                                    │
+│ Wave 3: db.Begin/tx.Commit (transactions), mocks.MockTx (tests)                 │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**After displaying**: Ask if the user wants to:
+1. Start migrating the next recommended endpoint
+2. Change the priority order
+3. Create Jira tickets for a wave
+
+---
+
+## Subcommand: `/migrate verify-parity <endpoint>` (alias `simetria`)
+
+Validates the **business-logic symmetry** between the Java legacy source and the Go
+implementation for ONE endpoint. **READ-ONLY** — it never edits code. It produces a
+per-endpoint parity report and flags every divergence for the user to decide on; any fix
+afterwards goes through the normal phase/branch flow (parity rule: flag, then wait for approval).
+
+Accept the endpoint by name, number, or Java method name.
+
+### Workflow
+
+> **ALWAYS checkout main first:** `git checkout main && git pull`. Parity is validated against the
+> canonical Go code merged in `main`, NEVER the current feature branch's WIP. If the working tree is
+> dirty, stash or commit before switching, and restore afterwards.
+
+1. **Load `.migration-context.yaml`** — if missing, tell the user to run `/migration-context` first.
+2. **Resolve the endpoint** in `endpoint_inventory`. If `status: not_started` → there is no Go
+   side to compare; tell the user and suggest `/migrate <endpoint>` instead. Stop.
+3. **Locate both sides:**
+   - Java: the `java_file` handler/resource + its service + dao (from `source_repos[].paths`).
+   - Go: `internal/modules/<go_module>/{handlers,service,repository}`.
+   - Properties files for error codes/messages (IMMUTABLE source of truth).
+4. **Read Java FIRST, then Go** — never assume Go behavior; extract from the actual code.
+5. **Extract the business cases from BOTH sides:**
+   - Validation order (each guard + the condition that triggers it)
+   - Error codes + EXACT messages, and the condition that fires each
+   - Flow branches (happy path + every early return)
+   - External-call handling (success / 4xx / 5xx / timeout / compensation-reversal)
+   - **Response serialization parity (null/empty handling) — ALWAYS check this:** Java serializes with
+     `@JsonInclude(NON_NULL/NON_EMPTY)` (omite campos null y vacíos), Go solo omite con `omitempty`.
+     Revisa **cada DTO de respuesta Y sus campos heredados** (clases base Java que la respuesta
+     `extends`, p.ej. `SumTotalsResult extends Transactions` — el base aporta decenas de campos).
+     Marca ⚠️ cuando:
+       · un campo string vacío que Go **pinta** (`"x":""`) pero Java **omite** → falta `omitempty` en Go;
+       · un campo que Go omite por `omitempty` pero Java sí renderiza (p.ej. número no-null) → quitar omitempty / usar puntero;
+       · un campo presente en Go que Java no envía, o viceversa.
+   - Defaults and date formats
+
+5b. **Trampas de FALSA PARIDAD (OBLIGATORIO — nunca declares `✅ match` sin descartar estas).**
+   Un check que "existe" en Go NO garantiza paridad. Para CADA validación/campo, verifica en el
+   código REAL (no por el nombre ni por presencia del check) y marca `⚠️` si difiere:
+
+   1. **Formato de dato** — el mismo campo puede tener formato distinto (ej. fecha de expiración
+      `yyMM` vs `MMYY`, `YYYY-MM-DD` vs epoch). Un parseo con el formato equivocado suele
+      **retornar "no aplica" en silencio** y **desactivar la validación** (la tarjeta vencida pasa).
+      Confirma el formato REAL de la DB/propiedad y cómo lo parsea Java vs Go.
+   2. **Comparación config-driven** — Java a menudo lee un valor de properties Y **la semántica de la
+      comparación importa** (ej. `isMaxAmount` compara `amount.length() > MAX_AMOUNT.length()` —
+      ¡por LONGITUD de string, no por valor numérico!). Lee CÓMO compara, no solo el umbral. Si Go
+      usa comparación numérica donde Java usa longitud (o viceversa) → `⚠️`. El valor debe venir por
+      config/env igual que en Java, no hardcodeado.
+   3. **Colapso a nivel query/SQL** — un `WHERE`/JOIN puede volver **inalcanzable** un código de error
+      (ej. filtrar por `cardToken` en el WHERE elimina la fila del cliente → Go devuelve `-2023`
+      "usuario no existe" en vez de `-2029` "tarjeta no registrada"). Rastrea si CADA código de error
+      es realmente alcanzable con la query actual.
+   4. **Obligatorio vs opcional** — un campo vacío/ausente puede dar error en Java pero un default
+      silencioso en Go (ej. `cardToken` vacío → `-2029` en Java; Go tomaba la primera tarjeta activa).
+      Verifica qué hace cada lado con vacío/ausente.
+   5. **Alcanzabilidad / código muerto** — que Go tenga el código `-2029` en una función NO significa
+      que se ejecute. **Traza el camino de principio a fin**; si una rama es inalcanzable, no es paridad.
+   6. **Precedencia/orden** — reordenar/consolidar validaciones en Go es **intencional (rendimiento)** y
+      NO es divergencia por sí mismo → 🟢. Lo ÚNICO que importa es el **resultado**: si para un input con
+      varias violaciones el **código/mensaje que gana** sigue siendo el mismo que en Java, es paridad.
+      Marca `⚠️` **solo** si el reorden cambia cuál error recibe el cliente (ej. Go devuelve `-2047`
+      donde Java devolvía `-2050`); si el ganador es el mismo, no lo marques aunque el orden difiera.
+   7. **Semántica del valor** — verifica la comparación real (`>`, `>=`, `<`, longitud, canónico),
+      no solo que el check exista.
+
+   Regla de oro: **ante la duda, es divergencia** — no declares paridad por inspección superficial.
+
+6. **Build the symmetry matrix** (one row per business case). The **`#` column is the stable case
+   ID** — the user references these ids later in `parity-solve`, so number every row sequentially:
+
+   | # | Caso de negocio | Java (`Clase.metodo:línea`) | Go (`archivo.func:línea`) | Estado |
+   |---|-----------------|------------------------------|----------------------------|--------|
+
+   Estados: `✅ match` · `⚠️ divergencia` · `❌ falta en Go` · `➕ extra en Go`
+
+7. **Build the error-code parity table** (messages are immutable → any text diff is `⚠️`):
+
+   | Código | Mensaje | Condición Java | Condición Go | Estado |
+   |--------|---------|----------------|--------------|--------|
+
+8. **Build the response comparison (Java vs Go)** — for the happy path AND for each divergent
+   case, show the LITERAL response body each side returns, as paired fenced JSON blocks, so the
+   difference in shape, field names, nesting, values, and `rc`/`msg` is visible at a glance:
+
+   **Caso `<nombre>` — Java (`Clase`)**
+   ```json
+   { "rc": "...", "msg": "...", ... }
+   ```
+   **Caso `<nombre>` — Go (`archivo`)**
+   ```json
+   { "rc": "...", "msg": "...", ... }
+   ```
+
+   Reconstruct each body from the ACTUAL code (resource/handler response builder + DTO + JSON
+   tags), never from memory. Mark field-level diffs inline with a `← ...` note (e.g.
+   `← Java interpola $monto$`, `← Go omite responseCard`, `← campo extra en Go`). Cover at minimum:
+   the success response and one example per divergent business case.
+9. **Classify each divergence:**
+   - 🟢 **Mejora intencional** — Go corrige un bug de Java o mejora la estructura (anótalo, no es error)
+   - 🔴 **Discrepancia de paridad** — Go diverge incorrectamente → marcar `⚠️ Discrepancia de paridad:`
+     citando archivo:línea en ambos lados
+   - ⚪ **Caso faltante** — un caso/código de Java no migrado a Go
+10. **Veredicto final:** resumen `N match / M divergencias` por categoría. **Lista explícitamente
+    los IDs (`#`) de los casos divergentes** (`⚠️`/`🔴`/`⚪`) agrupados por categoría, y cierra
+    invitando a corregirlos:
+
+    > Para preparar los fixes de paridad: `/migrate parity-solve {endpoint} cases (<ids>)`
+    > (ej. `cases (9,10,11)`). Roadmap con cap ≤300 líneas / ≤10 files por fase.
+
+    **No modificar código.** El usuario decide qué IDs corregir; cada corrección entra por el flujo
+    normal de fases vía `parity-solve`.
+
+11. **Sección "Bugs Java detectados":** además de las divergencias de paridad, reporta TODOS los
+    bugs encontrados al leer el fuente Java, clasificados por severidad:
+
+    **11a. Bugs críticos** (corrupción de datos, seguridad, resultado/monto incorrecto, pérdida de dinero):
+
+    > `⚠️ Bug Java crítico:` {qué} · severidad · impacto · ubicación (`Clase.metodo:línea`) ·
+    > mitigación propuesta en Go
+
+    Se **DECIDE con el usuario** (mitigar en Go o replicar tal cual) — no se corrige ni se replica
+    en silencio.
+
+    **11b. Bugs de respuesta** (código/mensaje incorrecto para la condición — el error llega al usuario
+    con un código genérico o un mensaje que no describe el problema real). Estos son muy comunes en
+    el legacy: excepciones no tipadas que caen en un `catch(Exception)` genérico produciendo `-2000`
+    cuando deberían usar un código específico (ej. `-1002` para parámetro requerido, `-1003` para
+    formato inválido). Por cada uno:
+
+    > `🔶 Bug Java respuesta:` {condición que lo dispara} · código Java actual (`rc`/`msg`) ·
+    > código correcto según RESPONSE_CODES · ubicación (`Clase.metodo:línea`) ·
+    > estado en Go: `✅ corregido` / `❌ replica el bug` / `⚪ no migrado aún`
+
+    Construir la tabla de bugs de respuesta:
+
+    | # | Condición | Java (`rc` · `msg`) | Correcto (`rc` · `msg` según RESPONSE_CODES) | Go estado | Ubicación Java |
+    |---|-----------|---------------------|-----------------------------------------------|-----------|----------------|
+
+    Estos bugs NO requieren aprobación del usuario para corregir en Go — son mejoras claras de
+    calidad de respuesta. Se corrigen usando los códigos de RESPONSE_CODES.properties que ya existen
+    para ese tipo de error. Si Go ya los corrigió, marcar `✅ corregido`; si no, marcar `❌ replica
+    el bug` y sugerir el fix como caso adicional para `parity-solve`.
+
+    Si no hay bugs de ningún tipo, indicar "sin bugs detectados".
+
+### Reglas
+
+- **Falsa paridad = el peor error del análisis.** Antes de declarar `✅ match` en cualquier caso,
+  corre el checklist **5b (trampas de falsa paridad)** contra el código REAL de ambos lados. Declarar
+  "match" donde hay divergencia hace fugar un bug a producción; ante la mínima duda, marca `⚠️`.
+- Mensajes y códigos de error son **inmutables** — se exige match exacto de texto.
+- **Solo reporta** — nunca aplica cambios. Recomienda; el usuario aprueba.
+- Si el endpoint no está migrado → no hay nada que comparar; sugiere `/migrate <endpoint>`.
+- Una discrepancia que el reporte declare "incorrecta" debe verificarse contra el Java real antes
+  de proponer fix (el hallazgo puede contradecir la paridad — leer el do-while/for de Java primero).
+
+---
+
+## Subcommand: `/migrate parity-solve <endpoint> cases (<ids>)` (alias `solve-parity`)
+
+After a `verify-parity` run, plan the fixes for the **cases the user chooses** to bring to parity.
+The `<ids>` are the row numbers from the verify-parity matrix (e.g. `cases (9,10,11)`). Produces a
+**phased roadmap** (one branch per phase — from `main` in serial mode, from the previous
+phase's branch when stacked) under a **STRICTER limit than the
+default**: **max 300 new lines and max 10 files per phase** (parity fixes must be small and surgical;
+split into more phases when needed).
+
+Usage: `/migrate parity-solve cashin cases (9,10,11)`
+
+### Workflow
+
+1. **Require a verify-parity matrix** for the endpoint. If none exists in this session, run
+   `verify-parity` first (which checks out `main` and builds the matrix), then continue.
+2. **Resolve the selected ids** against the matrix. Reject ids that are `✅ match` or `🟢 mejora
+   intencional` (nothing to fix) and confirm the remaining set with the user.
+3. **RE-VERIFY each selected case against the Java source FIRST** — read the real Java code /
+   `RESPONSE_CODES` before planning any fix. If a case turns out to be intentional or unverifiable,
+   flag it (`⚠️`) and drop it from the plan. Never fix from the report summary alone.
+4. **Map each confirmed case → the Go change** needed: layer + file(s) + approx new lines
+   (error code/message, validation order, missing branch like KYC, response field, etc.). Reuse
+   go-bricks / existing helpers; defer to `target.reference_repo` for patterns.
+5. **Group changes into phases under the cap** — **≤300 new lines AND ≤10 files per phase** (impl +
+   tests). If the selected cases exceed it, split into `parity-1`, `parity-2`, … Each phase includes
+   tests, `make check` (0 issues, coverage ≥85%), and a version bump.
+6. **Present the roadmap and WAIT for approval.** Before creating any branch, **ASK the user for the
+   Jira epic/ticket** for these parity fixes. If they give an epic, **search its children for the
+   ticket matching this endpoint, show the candidate, and confirm it** before branching (same as
+   Phase START step 2). Then execute phase by phase: **always `git checkout main && git pull` first,
+   then create** `feature/{ticket}-parity-{n}` **from `main`** — one phase merged before the next.
+
+### Output (roadmap)
+
+```
+parity-solve: {endpoint} — cases {ids}
+
+Confirmed for fix (verified vs Java):
+  #9  {caso}   → {Go file} ({layer})   ~{X} líneas
+  #11 {caso}   → {Go file(s)}          ~{Y} líneas
+Dropped:
+  #10 {caso}   → 🟢 intencional / no procede ({razón})
+
+Phases (≤300 líneas · ≤10 files c/u):
+  Phase parity-1  feature/{ticket}-parity-1   cases #9       ~{X} líneas, {n} files
+  Phase parity-2  feature/{ticket}-parity-2   cases #11      ~{Y} líneas, {n} files
+```
+
+### Rules
+
+- **Cap is 300 lines / 10 files per phase** — HARD, stricter than the standard 400. Split otherwise.
+- **Verify each case against Java before fixing** — messages/codes are immutable, match exactly.
+- **Only fix the selected cases** — never touch cases the user didn't choose.
+- One branch per phase from `main`; tests + `make check` + version bump per phase; no commit without approval.
+
+---
+
+## Subcommand: `/migrate usecases <endpoint>` (alias `casos`)
+
+Extracts, from the **Java source** (the spec), the full list of **use cases / test scenarios** for
+the endpoint — redactados con disciplina de test-case writing — para que QA pruebe la versión Go
+**y** para que sea la **BASE directa de la tabla de Pruebas Unitarias (EST-XX) del Plan de Desarrollo**
+(techdoc). **READ-ONLY** — produces a test-case catalog, touches no code. Feeds the QA ticket de la
+fase docs/cert y el Plan de Desarrollo.
+
+### Principios de redacción (test-case writing)
+
+Consolidado de las guías estándar (testRigor, Katalon, Guru99, BrowserStack, TestRail, Testmo).
+Cada caso se redacta así:
+
+- **Consistencia** — mismo formato/estructura para todos los casos.
+- **Claridad + atomicidad** — pasos accionables y **un solo objetivo por caso** (nunca validar varios
+  `rc` en un mismo caso; un branch → un caso). Mantener los pasos mínimos.
+- **Naming accionable** — el título describe la acción y el resultado ("Recarga OK…", "amount ≤ 0 →
+  rechazo"), no algo vago como "probar cashin".
+- **Cobertura** — positivos **y** negativos, más edge / externo / auth / estado DB.
+- **Técnicas de diseño (para enumerar edge/negativos con método, no a ojo):**
+  · **Partición de equivalencia** — agrupa clases válidas/ inválidas por campo (un caso por clase).
+  · **Análisis de valor límite (BVA)** — prueba los bordes: monto `0` / mínimo / **máximo y máximo±1**,
+    longitud `dataMfetch` **250/251**, fechas límite, longitudes de campo.
+  · **Tabla de decisión** — cuando el resultado depende de una combinación (ej. estado tarjeta ×
+    estado cuenta × v1/v2): una fila por combinación relevante.
+- **Datos definidos** — input y precondición explícitos y accionables (valor exacto, no "un monto malo").
+- **Independiente y repetible** — cada caso corre solo (no depende del anterior) y da el **mismo
+  resultado sin importar quién lo ejecute**. Documentar la **limpieza/reversión** del ambiente
+  (ej. la transacción insertada, el `X-Identifier-Key` consumido) para no contaminar corridas.
+- **Trazabilidad (clave para migración)** — cada caso lleva un **ID estable `EST-NN`** y su **Origen
+  Java** (clase/método/branch de donde sale). Ese `EST-NN` se **reusa tal cual** en la tabla de
+  Pruebas Unitarias del Plan de Desarrollo → un solo lenguaje entre QA, dev y el plan. Referencia por
+  ID (no repitas un caso: apúntalo por su `EST-NN`).
+- **Sin suposiciones** — derivar SOLO del código Java + `RESPONSE_CODES`; jamás inventar un caso.
+- **Campos por caso** (adaptados al API): ID · título · tipo · prioridad · precondición · datos de
+  entrada · pasos/reproducción · resultado esperado (`rc`·msg·HTTP·objeto) · verificación (log/BD/HTTP)
+  · postcondición/limpieza (estado DB) · origen Java · **[ejecución] Resultado real · Estado (Pass/Fail)**.
+  Las dos columnas de ejecución van **vacías al diseñar** y las llena QA al correr (hoja tipo Excel/Word).
+
+### Workflow
+
+1. **Load `.migration-context.yaml`** and resolve the endpoint.
+2. **Read the Java source** (resource + service + dao) + `RESPONSE_CODES.properties` (runtime) — same
+   source-of-truth as `verify-parity`. Read Java FIRST; derive scenarios ONLY from the real code, never invent.
+3. **Enumerate EVERY scenario** the endpoint can produce — aplica **partición de equivalencia, BVA y
+   tabla de decisión** (ver principios) para cubrir bordes y combinaciones sin dejar casos fuera:
+   - **Happy path(s)** — including variants (e.g. card ACTIVE vs PB, with/without optional fields).
+   - **Negative** — one per validation/error branch, with the INPUT that triggers it and the exact
+     `rc`/`msg`/HTTP expected (codes from RESPONSE_CODES).
+   - **Edge** — empty/missing fields, boundaries (montos min/max, rango de fechas 90d, longitudes
+     dataMfetch 250), fechas invertidas, tarjeta vencida/bloqueada/cancelada, cliente inactivo,
+     body no descifrable / JWE inválido.
+   - **External** — fallo del servicio externo (4xx/5xx/timeout) y compensación/reverso si aplica.
+   - **Estado DB** — qué queda en Oracle tras éxito vs rechazo (transacción PROCESSED/REJECTED, etc.).
+   - **Auth** — token ausente/inválido/vencido (`-122`/`-102`); `switch:1` (respuesta plana) si aplica.
+
+3b. **Precisión de mensaje y OBJETO de response (OBLIGATORIO).** Para cada caso, no basta el `rc`:
+   captura **el `msg` EXACTO** (texto literal de RESPONSE_CODES, con interpolaciones resueltas —
+   `$monto$`, `[param]`, espacios finales) **y la forma del objeto de response** que debe devolverse:
+   qué campos aparecen, cuáles se omiten y con qué valores. Reconstrúyelo del **response builder real**
+   (resource/handler + DTO + tags/`@JsonInclude`), nunca de memoria. Ten en cuenta:
+   - campos que solo aparecen en éxito (ej. `transactionIdentifier`, `transactionDate`, `card`);
+   - campos que Java omite (NON_NULL/NON_EMPTY) vs los que Go pinta (`omitempty` o no);
+   - el objeto/estructura de éxito puede diferir del de error (rc≠0 suele traer solo `rc`/`msg`).
+   Este objeto esperado es lo que QA valida byte-a-byte, así que debe ser **exacto**.
+
+4. **Present the test-case catalog** (QA + **base del Plan de Desarrollo**):
+
+   | EST | Caso (título) | Tipo | Prio | Precondición | Entrada (delta) | Resultado esperado (`rc` · msg · HTTP) | Verificación (log/BD/HTTP) | Origen Java | Bug legacy |
+   |-----|---------------|------|------|--------------|-----------------|----------------------------------------|----------------------------|-------------|------------|
+
+   - **EST** — ID estable correlativo `EST-01`, `EST-02`, … Es la **columna puente**: estos mismos
+     IDs se copian a la tabla de Pruebas Unitarias del Plan de Desarrollo (techdoc). No renumerar.
+   - **Tipos**: ✅ positivo · ❌ negativo · 🔶 edge · 🌐 externo · 🔐 auth.
+   - **Prio**: 🔴 alta (flujo de dinero / seguridad) · 🟠 media · 🟡 baja.
+   - **Entrada (delta)**: qué cambiar sobre el *request base* (ver 4c) para disparar el caso — valor exacto.
+   - **Verificación**: cómo confirma QA — línea de log esperada, estado en Oracle (`TP`/`TR`/`TRR`),
+     y/o shape del body HTTP. Es el "cómo verificar" que exige el escenario del Plan de Desarrollo.
+   - **Origen Java**: clase/método/branch del que sale el caso (trazabilidad al spec).
+
+   Esta tabla **ES** la base de la tabla `[3] Pruebas Unitarias (EST-XX)` del Plan de Desarrollo:
+   el `techdoc`/plan la consume tal cual (mismo `EST-NN`, mismo alcance, misma verificación).
+
+   **Columna "Bug legacy"** — para cada caso, verificar si Java produce una respuesta incorrecta
+   (código genérico, mensaje equivocado, excepción no tipada que cae en catch genérico). Valores:
+   - `—` → Java responde correctamente para este caso
+   - `🔶 Java: rc X / msg "Y"` → Java produce un código/mensaje incorrecto; el "Resultado esperado"
+     de la tabla ya muestra el valor CORRECTO (el que Go debe usar según RESPONSE_CODES). Agregar
+     entre paréntesis si Go ya lo corrigió: `(Go ✅ corregido)` o `(Go ❌ pendiente)`.
+
+   Ejemplo:
+   ```
+   | EST-05 | transactionCode vacío | ❌ | 🔴 | Token válido; sin query param `transactionCode` | Quitar `transactionCode` del path | rc: -1002 · "Error parametros requeridos: [transactionCode]" · HTTP 200 | Body `{rc,msg}` sin `data`; no inserta en ADMCONS_TRANSACTIONS | ValidationsServiceImpl.validateParams | 🔶 Java: rc -2000 / "Error General" (Go ✅ corregido) |
+   ```
+
+4b. **Objeto de response literal (OBLIGATORIO).** Además de la tabla, incluye el **body de respuesta
+   exacto** (JSON) para: el/los happy path(s) y **al menos un caso de error representativo**.
+   Reconstruido del código real, mostrando `rc`, `msg` literal y los campos presentes/omitidos:
+
+   **Éxito**
+   ```json
+   { "rc": "0", "msg": "PROCESS OK", "transactionIdentifier": "…", "transactionDate": "…" }
+   ```
+   **Error (ej. -2029)**
+   ```json
+   { "rc": "-2029", "msg": "Error la tarjeta no esta registrada" }
+   ```
+   Esto le da a QA el objeto exacto a validar (shape + msg), no solo el código.
+
+4c. **Ejemplo de REPRODUCCIÓN por caso (OBLIGATORIO).** Cada caso debe indicar **cómo dispararlo**
+   con un request concreto, para que QA lo replique sin adivinar. Estructura recomendada:
+   - **Request base** (una vez): método + ruta, headers requeridos con **valores válidos** (ej.
+     `Authorization: Bearer <token>`, `country: Pa`, `language: es`, `channel: mobile`,
+     `Content-Type/Accept: application/json`, y en v2 `X-Identifier-Key: <uuid>`), y el **payload
+     descifrado** del happy path (los campos y valores que producen `rc:0`). Si el body va cifrado
+     (JWE), indícalo: se envía `{"data":"<jwe>"}` cifrando ese payload.
+   - **Delta por caso**: para cada caso de la tabla, di **qué cambiar** sobre el request base para
+     dispararlo (ej. "`amount:"0"` → -2027", "`cardToken:""` → -2029", "reenviar el mismo
+     `X-Identifier-Key` ya procesado → -2073", "usar tarjeta con `expiry` en el pasado → -2050",
+     "header `language:ES` → -1003"). Debe ser accionable: valor exacto + resultado esperado.
+   - Para casos que dependen de estado (tarjeta bloqueada/vencida, usuario dado de baja, cuenta
+     inactiva, fondos insuficientes) indica el **dato/precondición** a preparar en la DB/ambiente.
+   Regla: alguien de QA debe poder **copiar el request base + aplicar el delta** y obtener el `rc`/`msg`
+   y objeto de response documentados, sin interpretar.
+
+5. **"Consideraciones para QA"** — qué preparar/tener en cuenta: datos (cliente/tarjeta y su estado,
+   montos), headers (`Authorization`, `switch`), body JWE, límites, cómo simular fallos de externos,
+   idempotencia, y los datos del ambiente TEST.
+6. **"Bugs legacy detectados"** — sección de resumen al final del documento con TODOS los casos donde
+   Java produce una respuesta incorrecta. Tabla consolidada:
+
+   | # caso | Condición | Java (`rc` · `msg`) | Correcto (`rc` · `msg` según RESPONSE_CODES) | Go estado |
+   |--------|-----------|---------------------|-----------------------------------------------|-----------|
+
+   Incluir una nota explicativa: "Estos bugs son condiciones donde Java produce un código/mensaje
+   genérico (típicamente `-2000` por `catch(Exception)` no tipado) en lugar del código específico
+   definido en RESPONSE_CODES.properties. El 'Resultado esperado' en la tabla principal ya refleja
+   el valor correcto."
+
+   Si todos los casos de la tabla tienen `—` en "Bug legacy" (Java responde correctamente en todos),
+   indicar "sin bugs legacy detectados" y omitir la tabla.
+
+### Rules
+
+- Derive scenarios ONLY from the Java source + `RESPONSE_CODES` — do not invent cases.
+- One row per distinct outcome/branch + the edge cases above. Codes/messages exact (runtime-verified).
+- **Follow the test-case writing principles** (bloque de arriba): consistencia, atomicidad (un
+  objetivo por caso), naming accionable, cobertura positiva+negativa, datos definidos, trazabilidad.
+- **Usa técnicas de diseño para enumerar, no a ojo** — partición de equivalencia (una clase por caso),
+  BVA (bordes: monto 0/mín/máx±1, dataMfetch 250/251, fechas límite) y tabla de decisión para
+  combinaciones (estado tarjeta × cuenta × v1/v2). Deben quedar reflejadas en los casos edge/negativos.
+- **Casos independientes, repetibles y con limpieza** — cada caso corre solo y da el mismo resultado
+  sin importar quién lo ejecute; documenta la reversión de estado (transacción, `X-Identifier-Key`).
+- **La tabla es exportable a hoja QA (Excel/Word)** — al entregarse a QA lleva además las columnas de
+  ejecución **Resultado real** y **Estado (Pass/Fail)**, vacías en diseño y llenadas al correr.
+- **`EST-NN` IDs are MANDATORY and stable** — correlativos, no se renumeran; son la columna puente
+  que el Plan de Desarrollo (techdoc) reusa tal cual en su tabla `[3] Pruebas Unitarias`.
+- **Origen Java + Verificación son obligatorios** por caso (trazabilidad al spec y cómo valida QA).
+- **READ-ONLY** — output is for QA/test planning; no code changes, no branch.
+- This is the input for the QA ticket (Definition of Done: "Ticket de QA con flujo completo + tabla de errores")
+  **y la base de la tabla de escenarios del Plan de Desarrollo** — misma numeración `EST-NN`.
+- **Bug legacy column is MANDATORY** — every row must have either `—` or the bug annotation. Never skip this analysis.
+- **Message + response object are MANDATORY and exact** — cada caso lleva el `msg` literal (interpolaciones
+  resueltas) y el objeto de response esperado (campos presentes/omitidos), reconstruido del response
+  builder real. Es lo que QA valida byte-a-byte; un `msg` u objeto aproximado invalida la prueba.
+- **Reproduction example is MANDATORY** — incluye un request base (headers válidos + payload descifrado
+  del happy path) y, por caso, el **delta exacto** para dispararlo (valor del campo/header o
+  precondición de estado). QA debe poder copiar-pegar y reproducir sin interpretar.
+
+---
+
+## Subcommand: `/migrate devplan <endpoint>` (alias `plan-dev`)
+
+Generates the **Plan de Desarrollo** (development plan) for a migration endpoint and updates the
+Jira ticket description directly. This is the developer-facing technical document that lives in
+Jira — written in developer language (Spanish), with the exact structure used by the team
+(modeled after CEB-5602 blockUnblock).
+
+Accept the endpoint by name, number, or Java method name.
+
+### Workflow
+
+1. **Load `.migration-context.yaml`** — if missing, tell the user to run `/migration-context` first.
+2. **Resolve the endpoint** in `endpoint_inventory`. Get the ticket number. If no ticket, ask the user.
+3. **Read the Java source** (resource/controller + service + dao/repository) + properties files —
+   same source-of-truth as other subcommands. Java code is the spec.
+4. **Read the Go source** if the endpoint is already migrated (`status: done` or `in_progress`) —
+   `internal/modules/<go_module>/` (handlers, service, repository, domain). If `not_started`, derive
+   the plan from the Java analysis + existing Go patterns in the project.
+5. **Generate the Plan de Desarrollo** following the template below (6 numbered sections).
+6. **Present to the user** for review. Show the full document in chat.
+7. **Ask**: update Jira ticket description? (yes/no)
+   - If yes → convert to ADF and PUT to the ticket via Jira REST API.
+   - If no → done, the user copies it manually.
+
+### Template (6 sections — MANDATORY, in this exact order)
+
+The generated plan MUST follow this structure. All content in **Spanish**. Derive everything from
+the actual Java source + Go code — never invent.
+
+````
+## 1. Contexto / Motivación
+
+{Qué endpoint es, en qué servicio Java vive (clase + método), qué hace funcionalmente.
+Si el módulo Go ya existe, mencionarlo. Si reutiliza componentes de otros módulos, listarlos.
+Mencionar si es simétrico a un endpoint ya migrado (ej. cashOut es simétrico a cashIn).
+Lenguaje directo de developer — sin marketing ni user stories.}
+
+## 2. Descripción técnica
+
+### Ruta y método
+
+{HTTP_METHOD} /core/{module}/v1/{path}
+Authorization: Bearer <token>
+Content-Type: application/json
+{Si JWE: Body: {"data": "<JWE compact>"}}
+
+### Flujo (Java parity — {JavaClass}.{javaMethod})
+
+{Lista numerada o con bullets de CADA paso del flujo, en orden de ejecución:
+- Validaciones (con el código de error que dispara cada una)
+- Consultas a DB (qué tabla, qué campos)
+- Llamadas a servicios externos (método HTTP, path, qué envía)
+- Interpretación de respuesta externa
+- Persistencia en DB (INSERT/UPDATE, dentro de transacción si aplica)
+- Construcción de respuesta
+
+Para cada paso que puede fallar, indicar: condición → rc/msg/HTTP.
+Si hay mejoras de Go sobre Java (bugs corregidos), mencionarlas con "Mejora respecto a Java:".
+Si hay diferencias con endpoints similares, incluir tabla comparativa.}
+
+### Request body {(JWE-descifrado) si aplica}
+
+| Campo | Tipo | Requerido | Valores válidos / Default |
+|-------|------|-----------|--------------------------|
+| {field} | {type} | {Sí/No} | {valores o default} |
+
+### Response {(JWE-cifrado) si aplica}
+
+```json
+{response body literal — rc, msg, y campos de datos}
+```
+
+### Errores de negocio
+
+| Condición | HTTP | rc | Mensaje |
+|-----------|------|----|---------|
+| {condición que dispara el error} | {HTTP status} | {rc code} | {mensaje EXACTO de RESPONSE_CODES} |
+
+{Incluir TODOS los errores: auth (-102, -122), validación (400), negocio (4xx), externos, Oracle (500).
+Ordenar por el flujo: auth → validación → negocio → externo → DB → éxito.}
+
+## 3. Archivos creados / modificados
+
+{Árbol de archivos del módulo Go con una descripción corta por archivo:}
+
+internal/modules/{module}/
+  domain/dto.go                    <- {qué contiene}
+  domain/entity.go                 <- {qué contiene}
+  handlers/handler.go              <- {qué contiene}
+  handlers/handler_test.go         <- {N casos: listar los nombres}
+  service/service.go               <- {qué contiene}
+  service/in_out.go                <- {qué contiene}
+  service/service_test.go          <- {table-driven, qué cubre}
+  repository/repository.go         <- {interfaces}
+  repository/sql_repository.go     <- {qué operaciones}
+  repository/sql_repository_test.go <- {N casos: listar categorías}
+  module.go                        <- {wiring y registro de ruta}
+
+{Si modifica archivos fuera del módulo (main.go, config, shared), listarlos.}
+
+Reutilizado sin duplicar: {lista de componentes compartidos que se reusan}
+
+## 4. Criterios de aceptación
+
+{Lista de criterios verificables — sin checkboxes, texto plano:}
+- {Criterio 1: qué debe hacer el endpoint ante un request válido}
+- {Criterio 2: qué tablas se actualizan y cómo}
+- {Criterio 3: qué servicios externos se llaman y en qué orden}
+- {Criterio 4: paridad de errores con Java}
+- {Criterio 5: make check pasa con 0 issues}
+- {Criterio 6: cobertura >= 85%}
+
+## 5. Definition of Done
+
+{Lista de condiciones para considerar el ticket DONE:}
+- PR revisado y aprobado ({branch names de las fases})
+- make check limpio (0 lint issues, 0 race conditions)
+- Mensajes de error verificados contra Java {servicio Java fuente}
+- Sin duplicación de lógica ya existente ({componentes reutilizados})
+- Documentación en docs/modules/{module}/ actualizada
+- Tests completados — {paquetes}: {cobertura%} por paquete
+
+## 6. Notas técnicas
+
+{Lista de bullets con notas relevantes para el developer:}
+- {Nota sobre transacciones Oracle si aplica}
+- {Nota sobre componentes reutilizados y dónde viven}
+- {Nota sobre httpClient: en Handler o en Service según patrón del módulo}
+- {Nota sobre auth: middleware, parámetro explícito, etc.}
+- {Nota sobre ramas de desarrollo y fases}
+- {Nota sobre cobertura final por paquete}
+````
+
+### Content rules
+
+- **Java source is the spec** — derive the flow, errors, and fields from the actual code, not from
+  memory or Jira descriptions. Read the Java handler + service + dao FIRST.
+- **Error messages are IMMUTABLE** — copy exactly from `RESPONSE_CODES.properties` or the Java code.
+- **Developer language** — escrito para devs, no para PO. Directo, técnico, sin user stories.
+- **Go-specific details** — if the endpoint is already migrated, include actual Go file names, test
+  case names, coverage numbers, branch names. If not migrated, use the estimated plan.
+- **Reutilización explícita** — always list what existing Go components are reused (CustomerReader,
+  Handler base, external clients, cryptoutil, etc.).
+- **Mejoras sobre Java** — if Go fixes a Java bug or improves behavior, call it out explicitly with
+  "Mejora respecto a Java:" and explain what changed.
+- **Diferencias con endpoints similares** — if the endpoint is symmetric to another (cashIn/cashOut,
+  block/unblock, associate/disassociate), include a comparison table showing the differences.
+
+### Jira update
+
+When the user approves the update:
+
+1. Convert the markdown to **Atlassian Document Format (ADF)** — headings, paragraphs, bullet lists,
+   tables, code blocks, inline code. Map each markdown element to its ADF equivalent.
+2. PUT to `https://jira4novo.atlassian.net/rest/api/3/issue/{TICKET_KEY}` with the ADF description.
+3. Confirm success:
+   ```
+   ✅ Plan de Desarrollo actualizado en {TICKET_KEY}
+   ```
+
+### When to use this vs other subcommands
+
+| Need | Subcommand |
+|------|-----------|
+| Jira ticket description (Plan de Desarrollo for devs) | **`devplan`** ← this one |
+| Jira ticket for PO (Historia de Usuario + subtasks) | `/migration-context ticket` |
+| Technical doc + diagrams (offline/docs folder) | `/migrate techdoc` |
+| QA test scenarios | `/migrate usecases` |
+| Java↔Go parity check | `/migrate verify-parity` |
+
+---
+
+## Subcommand: `/migrate techdoc <endpoint>` (alias `doc-tecnico`)
+
+Generates the endpoint's **technical document** (in text) + **three diagrams as images** (class, flow,
+data). Reads Java + Go; READ-ONLY on the project code — it only writes the diagram/image files into
+the folder the user specifies.
+
+### Step 0 — ASK for the output folder (MANDATORY, first)
+
+Before generating anything, **ask the user for the destination folder** where the diagram images will
+be generated. Do NOT assume the path. Create the folder if it doesn't exist (`mkdir -p`).
+
+### Text content (derived from Java spec + Go real code — never invent)
+
+1. **Alcance** — qué hace el endpoint, ruta/método, entradas y salidas, qué cubre y qué NO (fuera de scope).
+2. **Definiciones, acrónimos y abreviaturas** — glosario SOLO de lo que aplica al endpoint
+   (p.ej. JWE, RC, PAN, tagPay, cardToken, SGC, KYC, PB, AppError, go-bricks, JWE/RSA, Oracle…).
+3. **Estructura** — módulo y capas (`domain`/`repository`/`service`/`handlers`), archivos, dependencias,
+   y qué se reutiliza (helpers/clients compartidos).
+4. **Construcción** — cómo se arma con go-bricks (wiring en `module.go`, registro de rutas, config,
+   cifrado), fases de migración y pruebas.
+
+### Diagrams (generate as IMAGES in the folder)
+
+- **Diagrama de clases** — structs/interfaces Go (Service, Handler, DTOs, repos, clients) y relaciones.
+- **Diagrama de flujo** — flujo de la petición por capa (middleware → handler → service → repo/externos),
+  happy path + ramas de error.
+- **Diagrama de datos** — tablas Oracle involucradas + relaciones (ER) / modelo de datos.
+
+For each, write a PlantUML source into the folder (`<endpoint>-clases.plantuml`, `-flujo.plantuml`,
+`-datos.plantuml`) and **render it to an image** (PNG): use the `plantuml` CLI if available
+(`plantuml -tpng <file>`), else Docker (`plantuml/plantuml`), else save the `.plantuml` and give the
+user the exact render command. Confirm the generated image paths at the end.
+
+### Rules
+
+- **ASK for the folder FIRST, always** — create it if missing; never assume.
+- Content derived from the Java source (spec) + the real Go code — do not invent.
+- READ-ONLY on the project repo; the ONLY writes are the diagram/image files in the chosen folder.
+
+---
+
+## Default: `/migrate` or `/migrate <endpoint>` — Migrate an Endpoint
+
+### Pre-flight
+
+#### 0. Confirm the working repo (legacy vs Go target)
+
+If the skill is invoked from the **legacy source repo** (e.g. `mftech_version_2.0`) — or from any
+repo that is NOT the Go target — **STOP and ask the user which Go repository to migrate into**:
+request the **git URL or local path**, then `cd`/clone to it before doing anything else. NEVER
+write Go code inside the legacy repo.
+
+**Canonical Go reference (ALWAYS):** treat
+[`novopayment/mdw-welcome-project-go`](https://github.com/novopayment/mdw-welcome-project-go) as the
+source of truth for **go-bricks usage and the target Go architecture** (module layout, layering,
+`server`/`database`/`httpclient`/`cryptoutil`/`logger` wiring, config injection, testing). When
+`.migration-context.yaml` or the target repo lacks a pattern, defer to this reference project — never
+to memory or guesswork. Record it as `target.reference_repo` in the context file.
+
+#### 1. Load context
+
+Read `.migration-context.yaml` from the target repo root. If it does not exist:
+
+> Context file not found. Run `/novo-legacy-migration-context` (or `/migration-context`) first to initialize the project context.
+
+**Stop here — do not proceed without context.**
+
+#### 2. Collect endpoint-specific inputs
+
+```
+Q1: Endpoint name?
+    (e.g. "getAccountBalance", "cancelCard")
+
+Q2: Which handler file/method in the source?
+    (e.g. Resource.java → getAccountBalanceForMonth)
+    Or paste the source code directly.
+
+Q3: Ticket number?
+    (e.g. PROJ-123)
+
+Q4: Target module in Go?
+    (existing module name, or "new: module_name")
+```
+
+#### 3. Verify go-bricks version
+
+```bash
+grep 'go-bricks' go.mod
+```
+
+If behind latest → create update branch FIRST, then come back.
+
+#### 4. Check go-bricks for reusable types (MANDATORY)
+
+Before ANY code, grep go-bricks for:
+- `database.Interface`, `fixtures.NewMockRows`, `mocks.MockDatabase`
+- `server.HandlerContext`, `server.Result`, `server.IAPIError`
+- `httpclient.Client`, `cryptoutil.DecryptJWE`
+- `logger.Logger`, `deps.Config.InjectInto`
+- `mocks.MockTx` (if transactional)
+
+Also check `gobricks_mapping` from `.migration-context.yaml` — it lists every go-bricks component and when to use it.
+
+**Rule**: If it exists in go-bricks, use it. Never reinvent.
+
+---
+
+## STEP 0 — Analyze Source Code (MANDATORY BEFORE ANY CODE)
+
+### Read the files listed in context
+
+Using `source.paths` from `.migration-context.yaml`:
+
+1. **Handler/Resource** → HTTP method, path, `@PathParam` vs `@QueryParam`, request validation
+2. **Service** → business logic, validation ORDER, external calls, catch blocks, defaults
+3. **DAO/Repository** → SQL queries, table names, JOINs, WHERE clauses
+4. **Properties files** → error codes and messages (IMMUTABLE — must match exactly)
+
+### Extract and present summary
+
+| Item | Value |
+|------|-------|
+| HTTP Method + Path | |
+| Path Params | |
+| Query Params | |
+| Request body | none / plain JSON / encrypted (JWE) |
+| Response shape | |
+| Error codes | (with exact messages from properties) |
+| SQL tables | |
+| External calls | |
+| Date parsing | |
+| Defaults | |
+| Catch blocks | |
+| go-bricks components | (which go-bricks types this endpoint needs) |
+
+**Do NOT proceed until the user approves this analysis.**
+
+---
+
+## STEP 0b — Reprocessing / rule-consolidation review (MANDATORY)
+
+Right after the source analysis (and before the roadmap), identify EVERY place the legacy code
+**repeats a read or re-validates the same data across layers** (reprocessing). Present a Java→Go
+side-by-side and **ask the user to confirm the consolidation** before planning any phase.
+
+> Mira: **en Java esto se hace así (reproceso) → en Go queda consolidado así (mismo resultado, sin
+> reproceso).** ¿Confirmas la consolidación?
+
+| Regla / dato | Java (dónde + nº de accesos) | Go (consolidado) | Reproceso evitado |
+|--------------|------------------------------|------------------|-------------------|
+| {ej. Card details} | `getUserData` + `isCardStatusValidation` + `isCardExpiryDateValidation` → 3× `getCardDetails` | 1× `GetCustomer`, checks en orden | 2 lecturas DB |
+| {ej. …} | … | … | … |
+
+Rules for this step:
+- **Preserve the business OUTCOME and the order of precedence** — the check that fires first in Java
+  must fire first in Go (same winning code/message). If a consolidation would change WHICH error wins,
+  it is a 🔴 divergence — flag it and do NOT consolidate without explicit approval.
+- If the source does NOT repeat reads/validations, state "sin reprocesos detectados" and move on.
+- **Wait for the user to confirm** the consolidation table before STEP 1. The confirmed consolidations
+  are then reflected in the phase plan and called out in the PR.
+
+---
+
+## Reference — Data-access & repository patterns (project-agnostic)
+
+Apply these when writing or refactoring any repository layer. They are framework-level (go-bricks)
+and NOT tied to any one migration project.
+
+### 0. Reuse the shared reader before you write a new repository (do this FIRST)
+
+**Generic rule.** Before adding a module repository to read a domain table, check whether a
+**shared, cross-cutting reader already reads it** — a reader that lives outside any single module
+(in the project's shared/platform package) and that the already-migrated modules reuse. Do not fork
+a parallel data-access stack.
+
+- **Look first** in the project's shared/platform package for a reader over the tables you need,
+  plus any helper that locates one item inside the returned aggregate. Reuse it.
+- **Before reusing it, classify what it actually is** — a "shared/platform" reader can mean two
+  different things, and treating both the same is how a domain concept ends up living where no
+  module owns it:
+  - **Generic mechanics** (query builder wrappers, connection/executor, pagination helpers) —
+    belongs in `platform`/`plataform`, no question.
+  - **A real domain concept** (Customer, Card, Account) that several modules happen to consume —
+    this is not infrastructure, it is **cross-module consumption of a business concept**. Route it
+    through rule 0b's second branch (consume via a local interface, or plan its own module) instead
+    of defaulting to "it's already in platform, so reuse it as-is." If it is already sitting under
+    `platform` today, that is a placement debt to name in the phase plan, not a reason to keep
+    extending it as if it were generic.
+
+  **Classifying it as a domain concept is never a licence to fork your own reader.** The
+  classification changes *how you consume it* — through a local interface instead of reaching for
+  its DTO — never *whether you duplicate it*. A parallel data-access stack over the same tables is
+  a check 8a finding regardless of how the existing reader is classified.
+- **If it lacks a column** the new flow needs, the answer depends on **whose knowledge that
+  column is** — decide before writing it, because `go-dev-technical` check 8a enforces both
+  directions:
+  - **A genuine attribute of the entity the reader models** (Customer gains a Customer field) →
+    **extend the shared query + the shared DTO.** The change is additive and every consumer
+    benefits. Do NOT build a new `sql_repository.go` + Row struct + `ScanColumns` + `mapper.go` +
+    a local DTO to re-read the same tables. Well-built duplication is still duplication.
+  - **Only meaningful to THIS consumer**, and to none of the others already reusing that reader →
+    **do not extend it.** The field goes behind an adapter/translator in your own module. Bolting
+    it on turns the shared reader into a grab-bag accumulating knowledge from every module that
+    ever touched it — review check 8a reports that as `[reuse-leak]`, so extending it here costs a
+    review round.
+
+  The test, in one question: *if another consumer of this reader read that field, would it mean
+  anything to them?* Yes → it belongs to the entity, extend. No → it is your module's knowledge,
+  adapt it locally.
+- **A new dedicated reader is justified only** when it returns data the shared reader structurally
+  cannot (a genuinely different aggregate) — not merely a couple of extra columns or a filter a
+  consumer can apply on the returned aggregate.
+- This is the authoring side of `go-dev-technical` check 8a — build it right here and the review is
+  clean. Record the reuse in the PR ("reused without duplicating: …").
+
+*Example (zinli-business-be-go)*: the shared reader is
+`internal/plataform/repository/customer.GetCustomer(tagPay, cardToken)` (customer + cards) with
+`cardutils.FindCard(customer, token, activeOnly)`, reused by accounts/operations/funds_transfer. A
+`setCardPin` migration needing `SEQUENCE_NUMBER`/`CARD_PROGRAM` extends that shared query+DTO — it
+must not fork a parallel card reader.
+
+*Honest caveat on that same example*: `customer.GetCustomer` is exactly the second case above —
+a domain concept (Customer) sitting under `plataform` rather than owned by its own module. It is
+documented here as the reader that already exists in the real repo, not endorsed as where a new
+one like it should be placed going forward. New readers over a business entity default to their
+own module (rule 0b); only genuine infrastructure defaults to `plataform`.
+
+### 0b. The endpoint needs data it does not own — decide WHERE it comes from (do this before any repository)
+
+Rule 0 answers one case: a shared/platform reader already reads the table. A migrated endpoint
+hits three other cases, and picking wrong produces code that reviews badly and couples two
+domains permanently. Answer this at **STEP 0**, before the phase plan:
+
+```
+El endpoint necesita un dato que no es suyo. ¿Quién lo posee?
+│
+├── Un reader compartido/plataforma ya lo lee
+│      → Clasifícalo primero (regla 0): ¿mecánica genérica, o un concepto de
+│        dominio que solo da la casualidad de vivir ahí?
+│      → MECÁNICA GENÉRICA: REUSARLO. Extender su query + DTO solo si la
+│        columna es atributo genuino de la entidad (regla 0)
+│      → CONCEPTO DE DOMINIO, y ya existe bajo platform: consumirlo igual —
+│        es lo que hay hoy— pero declarando una interfaz local en TU módulo,
+│        no acoplándote a su DTO. Registrar la deuda de ubicación en el plan
+│        de fases. NO forkear un reader paralelo
+│      → CONCEPTO DE DOMINIO que todavía no existe: no lo crees en platform;
+│        va en el módulo que lo posee (rama de abajo)
+│
+├── Otro MÓDULO DE NEGOCIO lo posee (cards, accounts, …)
+│      → Declarar la interfaz MÍNIMA acá, en el consumidor, y que el service
+│        de ese módulo la satisfaga (structural typing, sin import cruzado).
+│        Se inyecta en main.go. NUNCA su Repository, structs internos, ni su DB
+│
+├── Es transversal de verdad — no es propiedad de ningún módulo
+│      → Modelarlo en shared/ (no resolverlo entrando al repo de otro)
+│
+└── Lo posee ESTE módulo
+       → Repositorio propio, con las reglas 1-5 de abajo
+```
+
+**The base patterns — interface injection for domain services, provider interface
+(`app.OutboxProvider`, `app.KeyStoreProvider`) only for framework-managed cross-cutting
+infrastructure — belong to the `go-bricks-modules` skill. Do not restate them here; read it
+when wiring.** What follows is only what changes *during a migration*.
+
+#### Why never the other module's repository or DB
+
+Three reasons, and the first is the one that bites in production:
+
+- **`deps.DB(ctx)` resolves the connection per tenant, per request.** Holding or reusing
+  another module's repository or `*sql.DB` breaks multi-tenant isolation — and it breaks it
+  silently, serving one tenant's data under another's request
+- **`Repository` is an internal layer, not an exported contract.** Coupling to it ties the
+  consumer to the other module's schema, so a new table, a cache or a partition change breaks
+  the consumer with no compiler warning
+- **`service.go` is explicitly what other modules consume** in the go-bricks standard; the
+  repository is not
+
+**This holds even for a single column.** "It's just one query" is the most common way this
+rule gets broken during a migration: the legacy Java method read six tables inline, and the
+naive port writes one repository over all six. The mechanism does not change with size — only
+the size of the method you add to the provider's interface does.
+
+#### The interface goes on the CONSUMER side — that is what kills the import cycle
+
+Depend on the **narrowest** interface, and declare it **in the consuming package**, not in
+the provider. This is the Go idiom "accept interfaces, return structs", and it buys two
+things a provider-side interface does not:
+
+- **The consumer declares only what it uses** — one or two methods, not the provider's whole
+  public contract. Interface segregation decided by whoever *consumes*, not whoever provides
+- **It structurally eliminates the import-cycle risk between business modules.** `accounts`
+  never needs `import ".../cards"` to name the type: Go's **structural typing** means the
+  provider's concrete struct satisfies it implicitly. The only package importing both is
+  `main.go`, the composition root, which already does the wiring
+
+```go
+// accounts/service.go — la interfaz vive del lado del CONSUMIDOR
+type CardsReader interface {
+    GetCardBIN(ctx context.Context, cardID string) (string, error)  // solo lo que accounts usa
+}
+
+// accounts/module.go
+type Module struct {
+    Cards CardsReader   // interfaz local — NO cards.Reader, no hay import de cards
+}
+```
+
+```go
+// cards/service.go — el proveedor NO sabe que accounts existe.
+// Satisface accounts.CardsReader implícitamente, sin import cruzado.
+func (s *service) GetCardBIN(ctx context.Context, cardID string) (string, error) { … }
+```
+
+```go
+// main.go — único lugar que importa ambos paquetes
+accountsMod := &accounts.Module{Cards: cardsMod.Service()}
+app.RegisterModules(cardsMod, accountsMod)   // proveedor primero
+```
+
+A side benefit worth stating: when the provider later adds or removes business methods the
+consumer never used, **the consumer does not even notice** — it only breaks if one of the
+one or two methods it actually declared changes.
+
+**Where the interface still belongs to the provider** — the distinction is *who consumes it*:
+
+| Contract | Interface lives in | Why |
+|---|---|---|
+| Another **module** consuming cross-module (`accounts` → `cards`) | **the consumer** (`accounts.CardsReader`) | least privilege, no cross import, no cycle |
+| The module's **own** handler → its service (`Actions`, `Service`) | the **provider** | it is internal to that module, not a cross-module contract |
+| **Several modules** consuming the exact same subset | the provider (`cards.Reader`) | one versioned contract beats the same local interface copy-pasted into each consumer |
+
+**What this does NOT fix.** Consumer-side interfaces remove the *import* cycle; they do not
+remove a **real bidirectional dependency**. If `cards` also genuinely needs something from
+`accounts`, no interface placement saves you — that is a design signal: the shared piece
+probably belongs in a third module or `shared/`, or the direction should be inverted with an
+event instead of a direct call. Say so in the roadmap rather than wiring both directions.
+
+Either way this is `go-dev-technical` check 19b — an interface carrying more than the
+consumer uses — applied before the code exists rather than found in review.
+
+**Two constraints on anything exposed cross-module:**
+
+- **Return domain types, never HTTP request/response DTOs.** Those belong to the `handler`;
+  crossing a module boundary with one drags a transport contract into a domain dependency
+- **No side effects in a cross-module read** — no bus publish, no outbox write. A read that
+  emits events turns every consumer into an accidental producer
+
+#### What this does to the phase plan (the part that is migration-specific)
+
+If the endpoint needs a read that the provider module does not expose yet, **adding that
+method is a change in the PROVIDER module, not in this one**. Plan it accordingly:
+
+- It is **its own phase and its own PR** — a different module, different owner, possibly a
+  different reviewer
+- In **stacked** mode it is the **bottom of the stack**: every later phase depends on it
+  compiling. `gh stack add` the consuming phases on top of it
+- In **serial** mode it merges first
+- Say it out loud in the roadmap, because it is the one phase the user may not expect:
+  > Fase 1 — `cards`: exponer `GetCardBIN` en su service (~40 líneas, módulo ajeno)
+  > Fase 2 — `operations`: repositorio propio (sobre fase 1)
+
+**Wiring rules that decide whether it even starts** (details in `go-bricks-modules`):
+
+- **Registration order in `main.go` is load-bearing**: the provider must be registered before
+  the consumer. Get it wrong and the dependency arrives `nil` — **at runtime, on the first
+  request that path serves**. No linter catches it
+- **`Init()` fails fast**: if a required dependency was not injected, `return error` with the
+  module name. A module that constructs itself half-wired defers the failure to production
+- **Never expose internal HTTP between modules of the same binary.** This is in-process
+  interface injection, not a network call — an internal endpoint to serve a sibling module is
+  a latency, auth and observability problem invented to avoid a struct field
+
+### 1. The query builder is the default — raw SQL is an exception you must justify
+
+**Not a preference, a default with a burden of proof.** Every query this skill writes goes
+through the go-bricks query builder unless the builder **provably cannot express it**, and
+"provably" means the empirical test in section 2, not an opinion.
+
+The severity is not ours to soften — `go-dev-technical` **check 1b** owns it and will apply
+it to the PR:
+
+| What you wrote | Review verdict |
+|---|---|
+| `fmt.Sprintf` / `Fprintf` / `+` concatenation / `strings.Replace` into SQL | **BLOCKER — injection vector.** No exceptions, not even for a one-off admin query |
+| Raw SQL `const` the builder *could* express | SHOULD-FIX — migrate it |
+| Raw SQL `const` the builder cannot express, **with a comment saying why** | ✅ Justified, and check 18b honors that justification instead of re-flagging it |
+| Raw SQL `const` the builder cannot express, **with no comment** | NIT — and the reviewer has to reconstruct your reasoning |
+
+**Two rules that follow, and they are the whole point of doing this at construction time:**
+
+1. **Raw does NOT mean interpolated.** A raw statement still binds every value as a
+   parameter — `:param` (Oracle) or `$N` (PostgreSQL). The escape hatch is from the
+   *builder*, never from parameterization. A raw query with a value pasted into the string
+   is the BLOCKER above, and being raw does not excuse it
+2. **Write the WHY comment now, in the same commit.** One line above the `const`, naming
+   which construct the builder cannot express (`SYSDATE` in `VALUES`, `WITH`, an optimizer
+   hint). It costs seconds while the reason is in your head, and it converts a review
+   finding into a justified exception. Reconstructing it later costs a review round trip
+
+
+- Model each table as a typed descriptor `Entity[T]{ Name, Columns }` and build queries with the
+  go-bricks query builder (`qb.Select/Insert/Update/Delete`, `dbtypes.MustTable`, `qb.Filter()`,
+  `qb.JoinFilter()`, `OrderBy`, `qb.MustExpr`) instead of hand-written SQL strings.
+- Aliased joins: qualify columns as `"a."+e.Columns.Field`; `From(MustTable(e.Name).MustAs("a"))`,
+  `LeftJoinOn(MustTable(x.Name).MustAs("b"), jf.EqColumn("a.col","b.col"))`.
+- Replace the optional-filter trick `(:x IS NULL OR col = :x)` with a **conditional filter**:
+  `where := f.Eq(col, id); if x != "" { where = f.And(where, f.Eq(tokCol, x)) }` — cleaner, no
+  `*string` nil param, and it reads as intent.
+- Match the existing schema-qualification convention: if the module's already-migrated SELECTs use
+  UNqualified table names (relying on the connection's default schema), migrate writes the same way
+  (drop the `SCHEMA.` prefix) so both paths target one name. Flag the change in the PR.
+
+### 2. When a query CANNOT use the builder (keep it raw — parameterized, and documented)
+
+- **`RawExpression` splices inline only in SELECT / GROUP BY / ORDER BY.** In `INSERT VALUES` and
+  `UPDATE SET` it is bound as a parameter instead, which is why a DB-side function placed there
+  becomes a broken bind rather than inline SQL. That is what makes the holdout list in rule 7 above
+  a **closed** list: an Oracle sequence or function in `VALUES`/`SET` (`SEQ.NEXTVAL`, `SYSDATE`),
+  `NVL()` / `||` (or any function) directly inside a `SET` target, and a correlated scalar subquery
+  inside `SET`.
+- **Before writing one of those off as raw, check `SetExpr` for the `UPDATE SET` case.** go-bricks
+  declares `SetExpr(column string, expr RawExpression, args ...any)` on the update builder, and its
+  own doc shows it carrying bound arguments —
+  `SetExpr("lease_until", qb.MustExpr("NOW() + (? * INTERVAL '1 second')"), secs)`. Whether that
+  actually splices the expression or binds it **must be confirmed with `ToSQL()` for your vendor**;
+  do not assume either way. If it splices, that statement leaves the holdout list. Likewise prefer
+  the vendor-aware `BuildCurrentTimestamp()` / `BuildUUIDGeneration()` over a hardcoded `SYSDATE`
+  wherever the value — not the expression — is what you need.
+- **Joins, subqueries, grouping, paging and locking are all expressible** — `InnerJoinOn` /
+  `LeftJoinOn` / `RightJoinOn` / `CrossJoinOn` with `JoinFilter`, `Exists` / `NotExists` /
+  `InSubquery` / `SubqueryColumn`, `GroupBy` / `Having`, `Limit` / `Offset` / `Paginate` (which
+  replaces `ROWNUM` tricks), and `ForUpdate` / `ForUpdateNoWait`. Also `BuildUpsert`,
+  `Insert(...).Select(...)`, and `Prefix` / `Suffix` for `RETURNING` / `ON CONFLICT`. None of these
+  justifies raw SQL.
+- **The genuinely absent constructs — the accepted reasons to keep a `const` raw — are `UNION`,
+  `WITH` / CTE, and vendor optimizer hints** (verified against go-bricks v0.63.0). Stored
+  procedures are also absent, but they are banned outright by review check 1d: a proc is a separate
+  blocker, never a justification.
+- **Re-derive the list instead of trusting this one** — the builder grows every release:
+  ```bash
+  GB=$(ls -d "$(go env GOMODCACHE)"/github.com/gaborage/go-bricks@* | sort -V | tail -1)
+  grep -hE '^\s+[A-Z][A-Za-z0-9]*\(' $GB/database/types/*.go | grep -v '^\s*//' | sed 's/^\s*//' | sort -u
+  ```
+- **Verify empirically before classifying** a query as migratable: write a throwaway test that prints
+  `ToSQL()` and confirm no value silently became a bind (e.g. a `RawExpression` struct as an arg).
+  A paper audit of "migratable vs hard" is frequently wrong — the generated SQL is ground truth.
+- **The list above is the closed set of accepted reasons.** "The legacy Java had it as a string",
+  "it is faster to copy", "it is only one query" and "it is internal, not user input" are **not**
+  reasons — the last one especially: today's internal caller is tomorrow's endpoint parameter.
+  A construct not in that list and not demonstrated by `ToSQL()` means the builder can express it,
+  so use it.
+- **Every raw statement carries its one-line WHY**, and the phase's PR body repeats the list of raw
+  queries with their reason. That is what the reviewer reads instead of re-deriving it (review
+  check 18b), and what the rawQuery audit table of a future `scan` will consume.
+
+### 3. Centralize the exec/error boilerplate — shared `Execute*` helpers
+
+Every repo repeats the same `getDB → Query → rows.Next/Scan/rows.Err → wrap` and
+`Exec → RowsAffected → wrap` flow. Extract it once into a module-agnostic
+`internal/plataform/repository/executor.go`:
+
+- `ExecuteQuerySingle(ctx, exec, query, opName, notFoundErr, dest...) error` — SELECT ≤1 row; no row
+  → `notFoundErr`; build/exec/scan/iter failures → `AppError(500)` labeled with `opName`.
+- `ExecuteUpdate(ctx, exec, query, opName, notFoundErr) (int64, error)` — 0 rows affected →
+  `notFoundErr`.
+- `ExecuteInsert(ctx, exec, query, opName) error`.
+- `Executor` interface `{ Query; Exec }` is satisfied by BOTH the plain connection and `dbtypes.Tx`
+  → the same helper runs inside or outside a transaction (`var _ Executor = (dbtypes.Tx)(nil)`).
+- `RawQuery{SQL, Args}` implements `ToSQL()` → keep-raw queries (UNION, `FOR UPDATE`) reuse the same
+  helpers, so even non-migratable SQL gets the centralized error handling.
+- The **caller passes the domain not-found error** so business codes reach the handler; infra is
+  wrapped 500 with an `opName` for diagnostics.
+
+### 4. Correctness details
+
+- **Fixed-width `CHAR(n)` columns** return space-padded values — `strings.TrimSpace` before comparing
+  or using them (else `status == ACTIVE` silently never matches).
+- **NULL ≠ empty**: scan into `sql.Null*` and treat NULL as "unavailable", distinct from `""`.
+- **SELECT column order is load-bearing** whenever a manual positional scan (`ScanColumns`) is used —
+  pin the exact ordered column list with a regression test asserting the generated SELECT.
+- **Best-effort audit writes**: do NOT discard the error. Return it separately (e.g.
+  `(auditErr, err error)`) so the service can log it (repositories don't log); the main operation
+  still commits. Test both the success and the audit-failure-still-commits paths.
+- **Deterministic audit values**: normalize the actor (e.g. upper-case) and use a fixed timezone for
+  audit timestamps.
+
+### 5. Testing gotchas
+
+- **testify `mock.Anything` shadowing**: `mock.Anything` also matches MISSING arguments, so a wider
+  expectation registered first (`On("Exec", anyN(16))`) will match and shadow a narrower call
+  (`anyN(5)`), returning the wrong stub. Disambiguate by pinning a discriminating argument — e.g. the
+  query constant: `On("Exec", append([]any{mock.Anything, query}, anyN(n)...)...)`.
+- Centralize error scenarios in shared table-driven helpers; always include the NULL case and any
+  actor/time fallback case.
+- Add a `ToSQL()`-pinning regression test for every builder-generated query, and keep per-package
+  coverage at target.
+
+---
+
+## STEP 1 — Present Phase Roadmap (MANDATORY — show BEFORE any code)
+
+### Phase limits (HARD RULES — ENFORCED AT ALL TIMES)
+
+- Max **400 new lines** and **10 files** per phase (implementation + tests combined) —
+  **measured against the branch's base**, not against `main` (see the Phase END line count)
+- **One branch per phase, one phase per PR.** The base is `main` in serial mode and the
+  previous phase's branch when stacked — what is forbidden is *two concerns in one branch*,
+  not branching off a phase
+- Each phase bumps version in the versioning file
+- If a phase exceeds limits → **split it into more phases**
+
+**Stacking does not raise the cap — it makes it cheaper to respect.** The whole point is that
+a 1200-line change becomes three 400-line PRs reviewed in parallel instead of one unreviewable
+PR or three serialized waits. A stack of oversized PRs is three review problems, not one
+solved.
+
+**These limits are enforced DURING implementation, not just during planning.** If while writing code you realize the current phase will exceed 400 lines or 10 files:
+
+1. **STOP immediately** — do not keep writing hoping it will fit
+2. **Count current lines**: `git diff --stat` or `wc -l` on new/modified files
+3. **Announce the split** to the user:
+   > ⚠️ Esta fase va a superar las 400 líneas (~{N} estimadas). Propongo dividirla:
+   > - Fase {N}a: {what stays in this branch} (~{X} líneas)
+   > - Fase {N}b: {what moves to a new branch} (~{Y} líneas)
+4. **Finish only what fits** in the current branch (≤ 400 lines)
+5. **Run `make check`** and present the PR for what you have
+6. **The rest goes in the next branch** — after this one merges (serial), or stacked directly
+   on top of it with `gh stack add` (stacked, no wait)
+
+**Monitor during implementation:**
+- After writing each file, do a quick line count check
+- At the halfway point of a phase, run `git diff --stat` to see where you stand
+- If you're at 300+ lines and still have significant work left → split NOW, don't wait until 400
+
+### Estimate BEFORE planning
+
+After the source analysis, estimate the total lines and files for each layer:
+
+```
+Layer estimates:
+  Domain:     ~X files, ~Y lines (DTOs, entities)
+  Repository: ~X files, ~Y lines (queries, impl, tests)
+  Service:    ~X files, ~Y lines (logic, tests)
+  Handler:    ~X files, ~Y lines (binding, route, tests)
+  Docs:       ~X files, ~Y lines (flow md, plantuml, openapi)
+```
+
+If ANY layer exceeds 400 lines or 10 files → split it. Common splits:
+- `domain-repository` → `domain` + `repository` (if complex DTOs + big SQL)
+- `repository` → `repository-queries` + `repository-impl` (if many SQL queries)
+- `service` → `service-validation` + `service-logic` (if complex business rules)
+- `handler` → separate phase if module registration is complex
+
+**The number of phases is NOT fixed at 4.** It can be 3 (simple endpoint) or 7+ (complex endpoint with external calls, transactions, multiple tables). The phases depend entirely on the size estimate.
+
+### Propose the sequencing mode with the roadmap (MANDATORY)
+
+The roadmap is where the mode is decided, because it is the only point where the whole phase
+list is visible. Present it as a recommendation with its reason, per phase, and get a yes:
+
+> Son 5 fases. Propongo **stack** para 1-3 (domain → repository → service): se revisan en
+> paralelo y no esperamos merges. La fase 4 (ruta) va **serial** porque necesita certificación
+> en TEST antes de que exista la fase 5. ¿Lo hago así?
+
+Rules for that proposal:
+
+- **Default to stacked** when the prerequisites are met and no phase hits the "When NOT to
+  stack" list. Say the expected saving in plain terms — N merge waits removed — not a
+  percentage you cannot back
+- **Name the serial phases and why**, one clause each. A mode chosen without a stated reason
+  is a mode nobody can challenge
+- **Never switch a running migration** from serial to stacked mid-flight. Finish the open
+  phase, then propose the mode for what remains
+- If the prerequisites fail (`gh` < 2.90.0, extension unavailable), **say so and run serial**
+  rather than proposing something the user cannot execute
+
+### Present numbered checklist
+
+Adjust the number of phases based on the estimate:
+
+**The roadmap MUST show the PR chain**, not just the phase list — in stacked mode the base of
+each PR is the plan's most important fact, and it is what the user is approving. Mark every
+phase with its mode and what it actually waits for:
+
+```
+Migration roadmap for: {endpoint_name}
+Modo: STACK fases 1-3 · SERIAL fase 4 (cert TEST) y 5     ← propuesta, requiere tu OK
+
+  main
+   └─ Fase 1 — Domain                    PR → main
+      Branch:  {branch_prefix}{ticket}-domain
+      Delivers: DTOs, entities
+      Est:     ~X archivos, ~Y líneas
+      Espera:  nada — arranca ya
+
+      └─ Fase 2 — Repository             PR → PR de fase 1
+         Branch:  {branch_prefix}{ticket}-repository
+         Delivers: SQL queries, repository impl + tests
+         Est:     ~X archivos, ~Y líneas
+         Espera:  que la fase 1 esté submitteada (NO su merge)
+
+         └─ Fase 3 — Service             PR → PR de fase 2
+            Branch:  {branch_prefix}{ticket}-service
+            Delivers: Business logic, error mapping + tests
+            Est:     ~X archivos, ~Y líneas
+            Espera:  que la fase 2 esté submitteada (NO su merge)
+
+  ── corte del stack ──  fase 4 arranca desde main, ya mergeado el stack
+
+  Fase 4 — Handler / ruta                PR → main          [SERIAL]
+      Branch:  {branch_prefix}{ticket}-handler
+      Delivers: HTTP binding, route registration, Postman + tests
+      Espera:  merge del stack 1-3.  Serial porque habilita la ruta y
+               necesita certificación en TEST antes de la fase 5
+
+  Fase 5 — Docs                          PR → main          [SERIAL]
+      Branch:  {branch_prefix}{ticket}-docs
+      Delivers: Flow docs, PlantUML, OpenAPI
+      Espera:  certificación en TEST de la fase 4
+
+Se ahorran 2 esperas de merge (fases 2 y 3 no bloquean).
+Comandos del stack: gh stack init -b main → add ×2 → push → submit --open
+```
+
+Three things that template gets right and a plain phase list does not:
+
+- **Every phase says what it waits for**, and in stacked mode that is *submitted*, not
+  *merged*. "Blocked by Phase N merge" is the serial assumption — never print it for a
+  stacked phase
+- **The cut between stacked and serial is drawn explicitly**, with the reason on the first
+  serial phase. A mode without a stated reason is one nobody can challenge
+- **The saving is stated in merge waits removed**, a number you can back — not a percentage
+
+PR numbers do not exist until `gh stack submit` runs, so the roadmap shows the **chain**
+(`PR → PR de fase N`). Replace those with real numbers (`PR #124 → #123`) in the progress
+display once submitted, and keep `gh stack view` as the source of truth.
+
+If the user accepts an all-serial plan, drop the tree and print the flat list with
+`Espera: merge de la fase N` on each.
+
+For a simple endpoint (few DTOs, one query, no external calls), phases can be combined:
+
+```
+Phase 1 — Domain + Repository  (combined — fits in 400 lines)
+Phase 2 — Service
+Phase 3 — Handler
+Phase 4 — Docs
+```
+
+### Determine endpoint type
+
+- **Plain body**: Handler first param = service request struct with `param:`/`query:` tags
+- **Encrypted (JWE)**: Flat binding struct with `param:` + `json:"data"`, httpClient in Handler or service depending on module type
+
+### go-bricks components for this endpoint
+
+List which go-bricks components will be used in each phase:
+
+```
+go-bricks usage plan:
+  Phase 1 (domain):     — (no go-bricks deps in domain)
+  Phase 2 (repository): database.Interface, fixtures.NewMockRows, mocks.MockDatabase
+  Phase 3 (service):    httpclient.Client, logger.Logger, cryptoutil (if JWE)
+  Phase 4 (handler):    server.HandlerContext, server.IAPIError, app.Module
+```
+
+**WAIT for user approval of the roadmap.**
+
+### Update endpoint status in .migration-context.yaml
+
+After approval, update the endpoint entry:
+```yaml
+status: "in_progress"
+current_phase: "domain"
+current_branch: "feature/CEB-XXXX-domain"
+ticket: "CEB-XXXX"
+```
+
+---
+
+## STEP 2 — Execute Phase by Phase (SEQUENTIAL)
+
+### CRITICAL: one concern per phase — and never move on without a signal
+
+```
+Phase 1 → PR → merge to main → user confirms ✓
+                                     ↓
+Phase 2 → PR → merge to main → user confirms ✓
+                                     ↓
+  ...repeat for each phase...
+                                     ↓
+Phase N (docs) → PR → merge to main → done ✓
+```
+
+The number of phases varies per endpoint (3 to 7+). Two things never change:
+
+1. **One concern per phase**, within the ≤400 prod lines / ≤10 files caps.
+2. **Never start the next phase on your own initiative.** The signal you wait for depends on
+   the mode chosen at STEP 1 — see "Phase sequencing" below:
+   - **Serial** — the signal is the user confirming the previous phase **merged to main**.
+     The diagram above is this mode
+   - **Stacked** — the signal is the previous phase's PR being **submitted** (`gh stack
+     submit`) and the user agreeing to continue. The phase is still open in review; you build
+     on its branch, not on `main`
+
+**In neither mode do you start a phase because the previous one "looks finished".** What is
+forbidden is inventing the signal, not the waiting itself — and stacking exists precisely so
+the waiting stops being the bottleneck.
+
+### Phase sequencing — stacked by default, serial when it must be
+
+The cost of this skill's phase discipline was never the phase size, it was the **waiting**:
+a phase could not start until the previous one merged. Stacked PRs remove that wait without
+relaxing a single gate — each PR still holds one concern, still caps at ≤400 prod lines and
+≤10 files, still bumps its version, still passes its self-review gate.
+
+**Stacked (default).** Phase N+1 branches off phase N's branch and its PR targets that
+branch, so GitHub shows only the incremental diff. Reviews run in parallel; the stack lands
+in one operation when approved:
+
+```
+main ──┬── feature/CEB-XXXX-domain      PR #1 → main        ┐
+       └──┬─ feature/CEB-XXXX-repository PR #2 → PR #1      │ all three in review
+          └── feature/CEB-XXXX-service   PR #3 → PR #2      ┘ at the same time
+```
+
+**Serial (the old flow).** Phase N+1 starts from `main` only after phase N merges. Still the
+right mode in the cases listed under "When NOT to stack" below.
+
+#### Prerequisites — verify once, before proposing the stacked mode
+
+```bash
+gh --version            # needs >= 2.90.0
+git --version           # needs >= 2.20
+gh extension install github/gh-stack
+gh extension list | grep stack
+```
+
+If `gh` is older or the extension is unavailable (offline, restricted runner), **say so and
+run serial** — never half-stack by hand-setting base branches, which produces a stack GitHub
+tracks but `gh stack` does not.
+
+#### Commands mapped to the phase workflow
+
+| Moment in the phase | Serial | Stacked |
+|---|---|---|
+| First phase of the endpoint | `git checkout main && git pull`, `git checkout -b feature/{ticket}-{phase}` | `gh stack init -b main`, then rename/create the first branch with the same NKH1 name |
+| Start a later phase | wait for merge, then branch from `main` | `gh stack add feature/{ticket}-{phase}` — **no waiting** |
+| Commit + branch in one step | — | `gh stack add -Am "type: subject"` |
+| Publish the phase | `git push -u origin <branch>` | `gh stack push` |
+| Open / update the PRs | `gh pr create` | `gh stack submit` (add `--open` to mark ready for review) |
+| See where you are | `git log --oneline` | `gh stack view` |
+| Trunk moved, or a lower PR took review changes | `git rebase main` | `gh stack sync` — fetches, fast-forwards trunk, cascades the rebase, pushes, and re-syncs the PRs |
+| Conflict during that rebase | resolve, `git rebase --continue` | resolve, `git add`, `gh stack rebase --continue` (or `--abort` to restore every branch) |
+| Land it | merge PR, confirm, next phase | `gh stack merge --merge-method squash` |
+
+Branch names do **not** change: the NKH1 convention (`feature/CEB-XXXX-service`, from the
+`### Branching` rules) applies identically. Stacking changes each PR's *base*, not its name.
+
+#### The four rules that make a stack safe
+
+1. **`gh stack sync` after every merge and after every review change to a lower PR.** A stack
+   whose parent moved is stale, and the diff GitHub shows a reviewer is then wrong. This is
+   the one habit the whole mode depends on.
+2. **Merging is all-or-nothing up to the PR you pick.** `gh stack merge` lands every PR from
+   the trunk up to your choice in a single operation — if any one of them cannot merge, none
+   do. So merge *up to the last approved phase*, never "the top one" out of habit.
+3. **Review order still runs bottom-up.** A reviewer approving phase 3 is implicitly trusting
+   phases 1 and 2. If phase 1 changes after phase 3 was approved, phase 3's approval is stale —
+   `gh stack sync` and say so in the PR.
+4. **One concern per PR, unchanged.** Stacking makes the ≤400-line cap *easier* to honor, not
+   optional. A stack of three oversized PRs is three review problems, not one solved.
+
+#### When NOT to stack — run serial instead
+
+- **The phase must be certified in a real environment before the next one is written.** Any
+  phase gated on a TEST/UAT result (typically the route-enabling phase and anything the
+  migration context marks as requiring certification) — the next phase's design depends on an
+  answer that does not exist yet
+- **A money-touching phase whose parity is still unverified.** If the branch decides whether
+  funds moved, reversed, or are in doubt, the parity check against the legacy source has to
+  land before anything is built on top. Building three phases on an unverified money branch
+  means a parity fix cascades a rebase through all of them
+- **The next phase's design genuinely depends on the previous phase's review.** If you expect
+  the reviewer to change the shape of phase N (an interface, a Row struct, an error contract),
+  stacking on it buys speed and pays it back with interest in cascaded rework
+- **The repository uses a merge queue for this target.** The stack enters the queue rather
+  than merging directly and may land in separate groups — workable, but confirm the ordering
+  with whoever owns the queue before relying on it
+
+#### Bookkeeping that changes
+
+- **`.migration-context.yaml`**: `current_branch` is the branch you are *on*; add the stack's
+  branch order so a resumed session can reconstruct it (`gh stack view` is the source of
+  truth — the file is a convenience, not an authority)
+- **Version bumps**: each phase still bumps `app.version` in `config.yml`. Sequential bumps
+  inside one stack do not conflict, but **if a lower phase changes its bump after review,
+  every phase above it conflicts on that same line** — expect it, resolve it once, and
+  `gh stack sync`
+- **Roadmap progress**: a phase is "in review", not "done", until the stack actually merges.
+  Report both — `Fase 2 — Repository [PR #124, en review, sobre #123]` — so the user is never
+  told a phase landed when it is only stacked
+
+#### What to ask the user, and when
+
+At **STEP 1** (phase roadmap), propose the mode explicitly with the reason, and let the user
+choose: *"Son 5 fases; propongo stack (fases 1-3) + serial para la fase de ruta, que necesita
+certificación en TEST. ¿Lo hago así?"* Do not silently switch a migration already running in
+serial mode to stacked — finish the current phase, then propose it for the remainder.
+
+### Phase START sequence (EVERY phase)
+
+1. **Confirm the signal for the active mode** — serial: *"¿La fase N ya está en main?"*;
+   stacked: *"La fase N quedó en PR #X; ¿arranco la N+1 sobre esa rama?"*
+2. **Resolve the Jira ticket** — if the work's ticket is not known, ASK the user for the ticket or
+   epic. **If the user gives an EPIC (not a specific ticket), search Jira under that epic for the
+   child ticket whose summary matches this endpoint** (by its `java_method`/name), present the best
+   candidate (`KEY — summary`), and **ask the user to confirm it's the right ticket BEFORE creating
+   the branch**. If nothing matches, ask for the ticket number or whether to create one. Never branch
+   without a confirmed ticket reference.
+
+   ```bash
+   # search the epic's children for the endpoint
+   curl -s -G "https://{jira_host}/rest/api/3/search" \
+     --data-urlencode "jql=parent={EPIC} AND summary ~ \"{endpoint_or_java_method}\"" \
+     -H "Authorization: Basic ${AUTH}"
+   ```
+3. **Position the base** (stash/commit a dirty tree first):
+   - serial → `git checkout main && git pull` — the branch starts from `main`
+   - stacked → stay on the previous phase's branch; `gh stack sync` first if trunk moved or the
+     lower PR took review changes
+4. Verify go-bricks version — if outdated, update branch FIRST
+5. **Create the branch** (do create it, don't skip) — same NKH1 name in both modes:
+   - serial → `git checkout -b {branch_prefix}{ticket}-{phase}` from `main`
+   - stacked → `gh stack add {branch_prefix}{ticket}-{phase}` on top of the previous phase
+6. Explore existing modules for reusable code
+7. **Check go-bricks** for any new helpers relevant to this phase
+8. Announce what this phase implements — get confirmation
+9. **go-bricks VALIDATION GATE** — run the checklist below before writing any code
+
+#### go-bricks Validation Gate (MANDATORY — runs at end of every Phase START)
+
+Before writing the first line of code in any phase, validate ALL applicable items:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│          go-bricks VALIDATION GATE — Phase {N}: {name}          │
+├──────────────────────────────────────────────────────────────────┤
+│ CHECK                          │ STATUS │ NOTES                 │
+│────────────────────────────────│────────│───────────────────────│
+│ go-bricks version up to date   │ ✅/❌  │ v{current} vs v{latest}│
+│                                │        │                       │
+│ — REPOSITORY PHASE —           │        │                       │
+│ database.Interface used        │ ✅/N/A │ never inject raw DB   │
+│ getDB func pattern             │ ✅/N/A │ func(ctx) (db, err)   │
+│ Named placeholders (:param)    │ ✅/N/A │ Oracle = :name        │
+│ fixtures.NewMockRows for tests │ ✅/N/A │ not custom mock rows  │
+│ mocks.MockDatabase for tests   │ ✅/N/A │ &mocks.MockDatabase{} │
+│ mocks.MockTx if transactional  │ ✅/N/A │ from go-bricks/testing│
+│ SQL in queries.go, not inline  │ ✅/N/A │ separate file         │
+│                                │        │                       │
+│ — SERVICE PHASE —              │        │                       │
+│ logger.Logger interface used   │ ✅/N/A │ zerolog via go-bricks │
+│ httpclient.Client for ext calls│ ✅/N/A │ not raw http.Client   │
+│ cryptoutil for JWE ops         │ ✅/N/A │ DecryptJWE/EncryptJWE │
+│ apperrors.AppError for errors  │ ✅/N/A │ structured errors     │
+│ No reinvented types            │ ✅/N/A │ grep go-bricks first  │
+│                                │        │                       │
+│ — HANDLER PHASE —              │        │                       │
+│ server.HandlerContext binding   │ ✅/N/A │ not raw echo.Context  │
+│ server.IAPIError for errors    │ ✅/N/A │ ValidateError pattern │
+│ server.NewResult for response  │ ✅/N/A │ status + body         │
+│ app.Module interface           │ ✅/N/A │ Init + RegisterRoutes │
+│ Flat binding struct (if JWE)   │ ✅/N/A │ param: + json:"data"  │
+│ deps.Config.InjectInto         │ ✅/N/A │ config injection      │
+│                                │        │                       │
+│ — ALL PHASES —                 │        │                       │
+│ Existing helpers reused        │ ✅/N/A │ cardutils, external/* │
+│ No duplicate of existing code  │ ✅/N/A │ extend before add     │
+│ Config in both yml + yaml      │ ✅/N/A │ env vars + local vals │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**How to run the gate:**
+1. Mark each check as ✅ (will use), ❌ (violation found — fix before proceeding), or N/A (not applicable to this phase)
+2. If ANY check is ❌ → fix it BEFORE writing code
+3. Present the filled gate to the user as part of the phase start announcement
+4. The gate is a **hard blocker** — no code until all applicable checks pass
+
+**Phase-specific rules:**
+- **Domain phase**: Most checks are N/A — domain has no go-bricks deps. Only check: "No reinvented types" and "Existing helpers reused"
+- **Repository phase**: DB checks are mandatory. Test checks are mandatory.
+- **Service phase**: Logger, httpclient, cryptoutil, apperrors checks are mandatory.
+- **Handler phase**: All server.* checks are mandatory. Module registration checks are mandatory.
+- **Docs phase**: No go-bricks gate needed — skip entirely.
+
+### Phase END sequence (EVERY phase)
+
+1. **LINE COUNT CHECK** — verify the phase stays within limits. **Measure against this
+   branch's BASE, never against `main`.** In a stack, phase 3's diff against `main` also
+   contains phases 1 and 2, so measuring from `main` would fail a phase that is perfectly
+   sized — the cap is per branch, i.e. per PR, i.e. per unit of review:
+   ```bash
+   # The base: the parent phase's branch when stacked, main when serial
+   BASE=$(gh stack view --json 2>/dev/null | grep -o '"parent":"[^"]*"' | head -1 | cut -d'"' -f4)
+   BASE=${BASE:-main}
+   echo "midiendo contra: $BASE"
+
+   git diff --stat "$BASE"...HEAD          # implementación + tests de ESTA fase
+   # > 400 líneas nuevas o > 10 archivos → STOP y partir la fase
+   ```
+   If `gh stack view` is unavailable, the base is whatever the PR targets — read it from the
+   PR, do not assume `main`. **A cap measured against the wrong base is worse than no cap**:
+   it either splits phases that did not need splitting, or silently lets one through.
+   If over 400 lines: **do NOT proceed** with make check or PR. Remove excess code, move it to a TODO for the next phase, and re-check.
+2. Run test command from context (`make check`, etc.) — 0 issues. Must satisfy the NovoPayment Go
+   quality gates: **staticcheck · go vet · gosec · gocyclo · ineffassign · `go test -cover`**.
+3. Verify coverage — NKH1 **floor 70%** on changed code, **goal 85%**; keep per-package ~85%.
+4. Bump version in versioning file
+5. `grep -rn` for source-language references — 0 matches
+6. `grep -rn "log.Printf\|fmt.Println"` — 0 debug logs
+7. **SELF-REVIEW GATE (MANDATORY)** — review your own phase before anyone else does.
+   Reviewing your own diff costs minutes; a review round trip costs a day.
+
+   **Preferred:** run the reviewer itself against the phase branch —
+   `/go-dev-technical review <PR_URL>` once the PR exists, or apply its Phase 0 evidence
+   sweep locally before opening it. That skill owns the standards; do not re-derive them
+   here.
+
+   **Minimum, when the PR does not exist yet** — the sweep from `go-dev-technical`
+   Step 0.7, scoped to what this phase touched:
+   ```bash
+   SCOPE="internal/modules/{module}/"
+   OUT=/tmp/phase-sweep.txt; : > $OUT
+   s(){ printf '\n##### %s\n' "$1" >> $OUT; shift; grep -rnE "$@" $SCOPE --include='*.go' 2>/dev/null | grep -v '_test\.go' >> $OUT || true; }
+   s SQL-INJECTION    'fmt\.(Sprintf|Fprintf)\(.*(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE)|"[^"]*(SELECT|WHERE)[^"]*" *\+'
+   s REINVENTED       'sql\.(DB|Open|Conn)|http\.(Client|Get|Post)\{?|echo\.Context|log\.(Printf|Println)|fmt\.Print'
+   s LAYER-BREAK      'modules/[a-z_]+/service/.*"(net/http|github.com/labstack)|modules/[a-z_]+/handlers/.*/database"'
+   s ERR-SWALLOWED    '_ = .*[Ee]rr|fmt\.Errorf\([^)]*%v[^)]*err'
+   s IDIOM-BLOCKER    'panic\(|os\.Exit|log\.Fatal|^func init\(\)'
+   s TIME-AS-INT      '(Timeout|TTL|Interval|Delay|ExpiresIn) +(int|int64|string)'
+   cat $OUT
+   ```
+   Every hit is **opened and read** before it is dismissed — the sweep locates, it never
+   concludes. A legitimate hit gets a one-line justification in the PR body so the reviewer
+   does not re-litigate it (review check 18b honors prior justifications; an unexplained
+   escape hatch gets flagged again).
+
+   **Then the design questions the sweep cannot answer** — the ones from "Build to the
+   review standard" above:
+   - Did this phase **re-assemble the response tail** instead of calling the funnel?
+   - Did it add a **second parallel list** of codes and messages?
+   - Did it **thread a transport param** through a service signature?
+   - Did it write a repository over tables a **shared reader** already covers?
+   - Did it **copy an Init block** instead of using the bootstrap?
+   - Did it **hand-copy an existing flow** instead of parameterizing a descriptor?
+
+   **Fail closed:** any BLOCKER-class hit (injection, reinvented type, layer break,
+   swallowed error, `panic`/`os.Exit` in a request path) → **fix it in this phase**. Do not
+   open the PR and do not proceed to step 8. A phase that ships a known blocker has not
+   ended.
+8. **POSTMAN COLLECTION (handler/route phase only)** — if this phase registers the route
+   (i.e. the endpoint becomes reachable), the endpoint MUST be added to the Postman
+   collection in the same phase. Add a request with: method, full `/core/<module>/v1/...`
+   path (path params as `{{var}}`), required headers (`Authorization`, `switch`), and a
+   sample JWE/plain body where applicable. Ask the user where the collection lives if
+   unknown (repo file vs Postman cloud via the Postman MCP). Skip for domain/repository/
+   service/docs phases — only the phase that enables the route touches the collection.
+9. Present PR text with ticket link
+10. **Publish the phase** for the active mode:
+    - serial → push the branch and open the PR as usual
+    - stacked → `gh stack push` then `gh stack submit --open`, and report the PR **with its
+      base**: `PR #124 → #123`. Run `gh stack view` and paste it so the user sees the shape
+11. **Update roadmap** — mark the phase `merged` (serial) or `en review` (stacked). A stacked
+    phase is **not** done until the stack merges; never report it as landed
+12. **Update `.migration-context.yaml`** — `current_phase`, `current_branch`, and in stacked
+    mode the branch order of the stack
+13. **WAIT for approval** before committing
+
+### Between phases — show progress (adapt to actual phase count)
+
+In **stacked** mode the same list carries the PR and its base, and distinguishes
+`en review` from `merged` — a stacked phase that is only submitted has not landed:
+
+```
+Fase 1 — Domain        [PR #123 → main]  en review
+Fase 2 — Repository    [PR #124 → #123]  en review
+Fase 3 — Service       [PR #125 → #124]  ← acá vamos
+Fase 4 — Handler/ruta  serial, espera certificación en TEST
+```
+
+In **serial** mode:
+
+```
+Phase 1 — Domain                   [x] merged
+Phase 2 — Repository               [x] merged
+Phase 3 — Service                  [ ] starting now
+Phase 4 — Handler                  [ ] blocked by Phase 3
+Phase 5 — Docs                     [ ] blocked by Phase 4 + TEST cert
+```
+
+The number of phases is dynamic — always show ALL of them.
+
+### After LAST phase merges
+
+Update `.migration-context.yaml`:
+```yaml
+status: "done"  # or "certified" after TEST
+current_phase: ""
+current_branch: ""
+```
+
+---
+
+## Build to the review standard (shift-left)
+
+Every line this skill writes will be reviewed by **`go-dev-technical`** — 36 checks across
+go-bricks usage, SQL safety, layer boundaries, bus contracts, error handling, concurrency,
+resource leaks, naming, module depth, DRY and Go idioms. Code that ignores them is not
+"done and pending review"; it is **rework already scheduled**.
+
+**`go-dev-technical` is the single source of truth for those standards. This skill does not
+restate them.** Two hand-synced copies of the same rule set is precisely the check-20b
+violation that skill reports in other people's code — parallel structures with nothing
+validating that they stay in sync. So the contract between the two skills is:
+
+| Skill | Owns |
+|---|---|
+| `go-dev-technical` | **What** the standard is, and how to detect a violation |
+| this skill | **How to build it right the first time**, and when to run the check |
+
+What follows is only the delta: the decisions that are cheap while writing and expensive
+once written.
+
+### The seven that are far cheaper at construction time
+
+Ordered by what they cost to retrofit. Each names the review check that will catch it, so
+the mapping stays traceable instead of duplicated.
+
+| # | Build it this way | Retrofit cost | Review check |
+|---|---|---|---|
+| 1 | **Return the response through the existing funnel.** Never re-assemble the tail (rc→status, observe, encrypt, write) in a new handler. Find who owns it and call it; the handler method is one line of business plus one return | Every handler added meanwhile inherits the leak | 19a, 19c |
+| 2 | **Never create a second parallel list.** A new business code and its message go in the **same** table keyed by rc — never a constant in `codes.go` plus a matching constant in `messages.go` paired by naming convention | Grows to N call sites pairing by hand; drift is invisible until production | 20b |
+| 3 | **The adapter owns its client and outbound headers** at construction. Do not thread `httpclient.Client` or an auth header through the service signature | Touches every test that passed the param; the file cap splits the fix, not the line cap | 19b |
+| 4 | **Reuse the shared reader before writing a repository** (Rule 0 below). Extend the shared query and DTO when a column is missing | A parallel stack — Row, scanColumns, mapper, DTO, interface — all of it well-built and all of it duplicate | 8a |
+| 5 | **Use the shared module bootstrap.** Do not copy another module's `Init` block | Six identical error strings; the module that skips it loses telemetry silently | 20c |
+| 6 | **Bus contract names come from the counterpart, copy-pasted, never retyped.** Exchange, queue, routing key and `EventType` must match the other side character for character | Publishes fine, routes nowhere, no error anywhere. The most expensive defect this repo can ship | 6b |
+| 7 | **QueryBuilder, always — raw SQL only when the builder truly cannot express it.** `fmt.Sprintf` into SQL is a blocker, not a shortcut, even for a one-off admin query. `RawExpression` (`qb.Expr`/`MustExpr`) only splices inline in SELECT/GROUP BY/ORDER BY — in INSERT VALUES / UPDATE SET it is bound as a parameter instead, so the **only** legitimate raw-SQL holdouts are: an Oracle sequence/function in VALUES or SET (`SEQ.NEXTVAL`, `SYSDATE`), `NVL()`/`\|\|` (or any function) directly inside a SET target, and a correlated scalar subquery inside SET (no clean builder form outside a SELECT projection). Every other statement — a plain SELECT/INSERT/UPDATE with only bound values, even a `ROWNUM = 1` guard (`f.Raw("ROWNUM = 1")`) — goes through `qb.Select/Insert/Update`. Document each holdout inline with the specific construct forcing it, not a blanket "stays raw" comment over the whole file | Security finding on a merged branch, or a phase later needing to retrofit builder calls one query at a time | 1b, 4b |
+
+### Design decisions taken once, at STEP 0 — not discovered in review
+
+Before the first phase, answer these in the STEP 0 analysis. They shape the phase plan, so
+getting them wrong costs a re-plan, not an edit:
+
+- [ ] **Which existing module owns each decision this endpoint needs?** rc→status mapping,
+      customer/card resolution, response assembly, error rendering. If one exists, this
+      endpoint **calls** it. If none exists and this is the third site that needs it, say so
+      in the roadmap — do not quietly add site three
+- [ ] **Does a shared reader already cover these tables?** (Rule 0.) Answer before planning
+      a repository phase, because the answer can delete the phase
+- [ ] **For every piece of data this endpoint needs, who owns it?** Run the rule 0b tree:
+      shared reader → reuse it; another business module → declare a **local** interface in
+      **this** module with only the methods needed and have that module's service satisfy it,
+      never its repository; truly cross-cutting → `shared/`; this module → its own repository.
+      A read the provider does not expose yet becomes **its own phase in the provider module**,
+      and in stacked mode it is the bottom of the stack
+- [ ] **Is this endpoint plaintext or encrypted?** Declare it. A module that opts out of
+      encryption must not silently opt out of telemetry
+- [ ] **Does anything here touch money?** If the flow decides whether funds moved, reversed,
+      or are in doubt, its rules are parity-verified branch by branch and never consolidated
+      as a mechanical refactor
+- [ ] **What varies between this endpoint and its siblings?** If it is a near-copy of an
+      existing flow, the variation goes in a **descriptor**, not in a second copy of the
+      execution path. Two hand-copied flows mean every future fix lands twice
+
+### Phase-level guardrails that mirror the review
+
+The phase caps (≤400 prod lines, ≤10 files) already match the review's sizing gate. Two
+consequences worth stating, because they change how a phase is planned rather than how it
+is written:
+
+- **Tests do not consume the 400-line budget, but they must earn the exemption.** They are
+  business-scenario tests — money moved or not, reversal applied or not, in-doubt resolved,
+  error paths that change the response. Coverage-padding fails review check 15 whether or
+  not it was free
+- **A rename that touches more than 10 files is split by the file cap, not the line cap.**
+  Count files before promising a phase
+
+---
+
+## Implementation Rules
+
+### go-bricks First (NON-NEGOTIABLE)
+
+Before writing ANY code in any phase:
+1. Check `gobricks_mapping` in `.migration-context.yaml`
+2. Cross-reference [`novopayment/mdw-welcome-project-go`](https://github.com/novopayment/mdw-welcome-project-go)
+   — the canonical reference for go-bricks usage and Go architecture; follow its module/layer/wiring patterns
+3. Grep go-bricks source for the types you need
+4. If go-bricks has it → use it directly
+5. If go-bricks doesn't have it → implement it, but follow go-bricks + welcome-project patterns
+
+**go-bricks provides:**
+- HTTP server, routing, handler context → `server.*`
+- DB access, transactions → `database.Interface`, `db.Begin`
+- HTTP client for external calls → `httpclient.Client`
+- JWE encryption/decryption → `cryptoutil.*`
+- Logging → `logger.Logger` (zerolog-based)
+- Config injection → `deps.Config.InjectInto`
+- Module system → `app.Module` interface
+- Test helpers → `fixtures.NewMockRows`, `mocks.MockDatabase`, `mocks.MockTx`
+
+### Parity (NON-NEGOTIABLE)
+
+- **Java business rules ARE the spec — always respected.** Migrate the decision exactly: codes,
+  messages, validation precedence, response shape. Default = replicate the Java behavior.
+- Error codes and messages are **IMMUTABLE** — match source exactly
+- Validation order / precedence must match source
+- Response structure (field names, nesting, null behavior) must match
+- **Critical bug** (data corruption, security, wrong outcome/amount, money loss) → the ONLY exception:
+  **REPORT it** with `⚠️ Bug Java detectado:` (severity · impact · Java location · proposed Go
+  mitigation) and **DECIDE WITH THE USER** whether to mitigate in Go or replicate as-is. Never
+  silently fix, never silently replicate a critical bug. This is *parity, but for bugs*: report → decide → act.
+- **Non-critical bug** → fix in Go, mention the deviation explicitly.
+
+### Rule consolidation & performance parity (efficiency without breaking the decision)
+
+Legacy code often **scatters and REPEATS** the same business rules across layers (resource + service
++ dao) and **re-fetches the same data multiple times** (e.g. cashin: `getUserData`, then
+`isCardStatusValidation` and `isCardExpiryDateValidation` each re-query `getCardDetails` — 3 DB reads
+of the same card). When migrating to Go:
+
+- **Consolidate** repeated reads/validations into ONE efficient pass (single DB fetch, checks
+  evaluated in order). Do NOT replicate the source's redundant re-queries / re-validations.
+- **Preserve the business OUTCOME exactly**: the same code/message must win, in the same **order of
+  precedence** (the check that fires first in the source must still fire first in Go). Parity is
+  about the *decision*, not the number of round-trips.
+- **Always flag the consolidation** in the STEP 0 analysis and the PR: list which source steps were
+  merged and why it's outcome-equivalent (this is the "flow improvement — mention the deviation" rule).
+- Net effect = **performance parity**: identical rules, fewer DB hits, no reprocessing.
+
+In `verify-parity`, a Go consolidation of repeated source checks is **🟢 mejora intencional** (NOT a
+divergence) — *as long as* the firing order and resulting code/message match. If the consolidation
+changes WHICH error wins or its precedence, that IS a 🔴 divergence.
+
+### Code Quality
+
+| Rule | Details |
+|------|---------|
+| **No source-language refs in comments** | Never mention Java, Jackson, Spring, etc. Check: `grep -rn "Java\|Jackson\|parity\|Spring"` |
+| **Max 7 params** | Group into struct |
+| **Complexity ≤ 15** | Extract helpers |
+| **Comments: WHY not WHAT** | Short + explicit; ≤100 chars/line default, exceed only when necessary, hard cap 150 |
+| **Extend before add** | Same table → extend existing method |
+| **Constants stay local** | Unexported if single-package use |
+
+### Architecture
+
+| Rule | Details |
+|------|---------|
+| **getDB func pattern** | Never inject raw DB |
+| **SQL in queries.go** | Never inline SQL |
+| **Named placeholders** | `:param` Oracle, `$N` PostgreSQL |
+| **External clients in shared pkg** | Not in service/ |
+| **Filtering in SQL** | Never in-memory |
+| **Config in both files** | Env placeholders + local values |
+
+### Date Handling
+
+| Pattern | Go |
+|---------|-----|
+| `MM/YYYY` | Normalize, `time.Parse("01/2006", s)` |
+| `YYYY-MM-DD` | `time.Parse("2006-01-02", s[:10])` |
+| `dd/MM/yyyy` | `time.Parse("02/01/2006", s)` |
+| Last day | `firstOfNext.AddDate(0, 0, -1)` |
+| Query upper bound | `dateTo.AddDate(0, 0, 1)` |
+| Echo trailing slash | Trim before parsing |
+| Test assertions | `time.Date()` + `.Truncate(24h)` |
+
+### JSON Parity
+
+| Issue | Fix |
+|-------|-----|
+| `float64(0)` → `0` | Custom type with `MarshalJSON` |
+| Null fields | `omitempty` tag |
+| String or number field | Custom `UnmarshalJSON` |
+
+### Compensation Pattern
+
+When external call succeeds but DB write fails:
+1. Best-effort compensation call to reverse
+2. Log attempt
+3. Return original error
+4. Test both: compensation succeeds + fails
+
+---
+
+## Testing Patterns
+
+### File structure
+
+```
+domain/        dto.go                (no tests)
+repository/    sql_repository.go     → sql_repository_test.go
+service/       service.go            → service_test.go + service_xxx_test.go
+handlers/      handler.go            → handler_test.go
+```
+
+### Mock pattern
+
+```go
+type mockRepo struct {
+    mock.Mock
+    repo.Interface
+}
+func (m *mockRepo) Method(ctx context.Context, ...) (Result, error) {
+    args := m.Called(ctx, ...)
+    if v := args.Get(0); v != nil { return v.(Result), args.Error(1) }
+    return nil, args.Error(1)
+}
+```
+
+**Always `mock.AssertExpectations(t)` at end.**
+
+### Repository coverage
+
+| # | Case |
+|---|------|
+| 1 | getDB error |
+| 2 | Query error |
+| 3 | Empty rows → ErrNotFound |
+| 4 | Scan error (fewer cols) |
+| 5 | rows.Err() via sqlmock |
+| 6 | Success 1 row |
+| 7 | Success 2+ rows |
+
+Transactional methods ADD: Begin error, Exec error, Zero rows, Commit error, Rollback mocking.
+
+### Service coverage (table-driven)
+
+Cover: parse errors, customer 404, customer DB error, card not found, repo 404, repo DB error, success variants.
+
+### Handler coverage (table-driven)
+
+Cover: success, each business error code → HTTP status, service 500, service 502.
+
+### Lint gotchas
+
+- `unused-parameter`: `_ *testing.T` in setup funcs
+- `rowserrcheck`: `assert.NoError(t, rows.Err())` after `fixtures.NewMockRows`
+- `sqlmock.Rows` has no `.Err()` — only `*sql.Rows` from `rowsFromSqlmock`
+
+---
+
+## Handler Patterns
+
+### Plain body
+
+```go
+func (m *Handler) Foo(req *service.FooRequest, ctx server.HandlerContext) (interface{}, server.IAPIError) {
+    resp, appErr := m.Service.Foo(ctx.Echo.Request().Context(), req)
+    if apiErr := m.ValidateError(appErr); apiErr != nil { return nil, apiErr }
+    return server.NewResult(HTTPStatusFromRC(resp.Rc), resp), nil
+}
+```
+
+### Encrypted body (pure module)
+
+```go
+type fooReq struct {
+    TagPay string `param:"tagPay" validate:"required"`
+    Data   string `json:"data"    validate:"required"`
+}
+```
+- `authHeader` inline — no intermediate variable
+- **The service holds `s.httpClient` as a field, set at construction — it is NOT a method
+  parameter.** Same as the mixed module below: one convention, both cases
+
+### Encrypted body (mixed module)
+
+- Service already has `s.httpClient` → all methods use it
+- Do NOT add `client` param to service method
+
+### One transport convention, both module types (resolved)
+
+Earlier versions of this skill told pure modules to pass `client httpclient.Client` as a
+method parameter while telling mixed modules the opposite. **That contradiction is
+resolved in favor of the field**, for both:
+
+- The parameter is a seam that is never substituted — one adapter, threaded through
+  several call levels, `nil` in essentially every test. Review check **19b** flags it as a
+  hypothetical seam, and it is far cheaper to not create than to remove: taking it out
+  later touches every test that passed it, so the ≤10-file cap splits the fix
+- The field convention was already the majority in the reference codebases, so this aligns
+  the two rules instead of keeping one of each
+- The adapter also owns **outbound headers**, including the correlation id — a business
+  service formatting transport headers is the DIP violation in the same check
+
+If a project's own `CLAUDE.md` or ADR still mandates the parameter for pure modules, that
+document wins for that repo — **follow it and say so in the PR**, citing this rule as the
+counter-convention worth reopening. Never silently review or build against a rule the
+project has not adopted.
+
+---
+
+## Docs Phase (LAST — after TEST cert)
+
+1. `{endpoint}-flow.md` — layer-by-layer, error tables, examples
+2. `{endpoint}-flow.plantuml` — activity diagram, no internal bypass details
+3. Update `overview.md` — endpoint table, params, model, errors
+4. Update `openapi.yaml` (root) + `{module}.yaml` (module spec)
+5. Bump version
+
+---
+
+## SDLC — NovoPayment standard (org-wide alignment)
+
+This skill's phase flow implements NovoPayment's **SDLC Developer Quick Reference**. Keep these
+org-wide rules in sync with the per-phase steps above.
+
+### Branching
+`[tipo]/[JIRA-ID]-[desc-kebab]`, branched from `main` (serial) or from the previous phase's
+branch (stacked — the name is identical either way, only the base differs). Types: `feature/` (nueva funcionalidad),
+`fix/` (bug), `hotfix/` (urgente en prod). Lowercase + kebab-case, description 3–5 words, JIRA-ID
+mandatory. This repo's migration phases append the phase to the desc (`feature/CEB-XXXX-service`).
+- ❌ `feature/login` · `gabriel/fix-bug` (no name prefix) · `Feature/PAY-456-Login` (caps) ·
+  `feature/PAY-456` (no desc) · overly long descriptions
+- ✅ `feature/CEB-5634-service`
+
+### Commits & PR title
+Conventional Commits: `tipo: descripción en minúsculas`. **Valid types (ONLY):**
+`feat` · `fix` · `hotfix` · `docs` · `test` · `refactor` (never `chore`/`perf`).
+- **Ticket goes in the BODY as `Refs: CEB-XXXX`, NEVER in the subject** (org SDLC + NKH1). The
+  title is `tipo: descripción` only. Keep the subject **≤72** chars.
+
+### PR size (reviewable in < 30 min)
+- `<200` líneas = ✅ ideal · `200–400` = ⚠️ aceptable (justificar) · `>400` = ❌ dividir antes de review.
+- Split by: one endpoint/feature per PR; business logic apart from infra/config; refactors in their
+  own PR; tests can land in a prior PR; DB migrations independent. (Matches the ≤400/10-file phase cap.)
+
+### Quality gates (Go) — enforced by `make check`
+staticcheck · go vet · gosec · gocyclo · ineffassign · `go test -cover`. Plus **CodeRabbit** on the
+PR — review & resolve every comment before requesting merge.
+
+### Testing mix & coverage
+**60% unit · 30% integration (APIs/endpoints) · 10% E2E (critical flows).** Coverage **floor 70%**,
+**goal 85%**. Exceptions (no tests required): config files, simple constants/enums, generated code,
+critical hotfixes (with a documented remediation plan in the PR).
+
+### Deployment (immutable build)
+`main → DEV (auto on merge) → UAT (PO approval) → PRD (Prod approval)`. Same artifact promoted across
+environments; config is external and per-environment. Migration endpoints follow this after the
+handler phase merges.
+
+### Hotfix (expedited)
+`hotfix/JIRA-ID-desc` from main → fix mínimo → testing acelerado en DEV → review (puede ser post-merge
+en emergencia) → aprobación de Producción → deploy a PRD → post-mortem. Coverage bypass permitido con
+plan de remediación documentado en el PR.
+
+### DORA targets
+Lead time `<2d` features / `<4h` hotfix · `≥2` deploys/week · change-failure `<5%` · MTTR `<1h`.
+
+---
+
+## PR Template
+
+```markdown
+**Title:** `feat: {description, lowercase}`
+(no scope in parentheses after the type; description in lowercase — no capitals except proper
+nouns/acronyms; **NO Jira ticket in the title** — it goes in the body as `Refs:` — e.g.
+`feat: add getLastCardToken domain + service`)
+**Keep the title ≤ 72 chars (NKH1 standard).** Put extra detail (and the ticket) in the body.
+A title over 72 chars (e.g. ~120) is a nit, not a blocker — but trim scope words to fit.
+
+**Body:**
+
+## Jira
+[{TICKET}](https://{ticket_host}/browse/{TICKET})
+
+## Summary
+- Bullet 1
+- Bump version X → Y
+
+## Test plan
+- [x] N test cases
+- [x] Test command passes — 0 issues, coverage X% (floor 70%, goal 85%)
+
+Refs: {TICKET}
+
+Generated with [Claude Code](https://claude.com/claude-code)
+```
+
+---
+
+## Anti-Patterns
+
+| Don't | Do |
+|-------|-----|
+| Invent error codes | Read properties files |
+| Filter in service | Filter in SQL |
+| Inline SQL | Use queries.go |
+| New method for same table | Extend existing |
+| `NewMockDatabase(t)` | `&mocks.MockDatabase{}` |
+| `.Day()+1` in tests | `time.Date()` + `.Truncate()` |
+| `param:` on service structs | Only handler binding |
+| Commit without test check | Always run full check |
+| PR without version bump | Bump EVERY phase |
+| Debug logs in code | Remove before done |
+| Skip AssertExpectations | Always at end |
+| Reinvent go-bricks types | Use existing go-bricks components |
+| Skip go-bricks check | ALWAYS check go-bricks FIRST |
+| Re-assemble the response tail in a new handler | Call the funnel that owns it (review 19a) |
+| New code constant + matching message constant | One table keyed by rc (review 20b) |
+| Thread `httpclient.Client` through the service | Adapter owns client + headers (review 19b) |
+| Copy another module's `Init` block | Use the shared bootstrap (review 20c) |
+| Retype a bus exchange/queue/routing key | Copy-paste from the counterpart (review 6b) |
+| Hand-copy a sibling flow | Parameterize a descriptor (review 20a) |
+| `fmt.Sprintf` into SQL "just this once" | QueryBuilder — it is a blocker (review 1b) |
+| "this statement stays raw" as a blanket comment over a whole query file | Convert every query that has no NEXTVAL/SYSDATE/NVL/\|\|/correlated-subquery in VALUES or SET; document only the true holdouts, one by one |
+| Open the PR with a known blocker | Fail closed: fix it in the phase (self-review gate) |
+| Start the next phase because the previous "looks done" | Wait for the mode's signal: merge (serial) or submitted PR + user go-ahead (stacked) |
+| Report a stacked phase as `merged` when it is only submitted | `en review` until the stack actually lands |
+| Build a stack on an unverified money-path branch | Verify parity first — a later fix cascades a rebase through every phase above it |
+| Hand-set a PR's base branch to fake a stack | `gh stack add` / `submit`, or run serial. A hand-made stack is one `gh stack` cannot sync |
+| Let a lower PR take review changes without re-syncing | `gh stack sync` — otherwise every diff above it is wrong |
+| `gh stack merge` on the top PR out of habit | Merge up to the **last approved** phase; it is all-or-nothing |
+| Write a repository over tables another module owns | Declare a local interface here and let that module's service satisfy it (rule 0b) |
+| Reach into another module's `Repository`, internal structs or DB | Only its exported interface — `deps.DB(ctx)` is per-tenant, per-request |
+| "Es una sola query, la leo directo" | Same mechanism regardless of size: add the method to the provider's `Reader` |
+| Inject the full `Service` when only reads are needed | Declare a local interface with the 1-2 methods used — least privilege, review 19b sees the real coupling |
+| Declare the cross-module interface in the PROVIDER and import it | Declare it in the CONSUMER — structural typing satisfies it with no cross import, so no import cycle is even possible |
+| Wire `cards → accounts` and `accounts → cards` both ways | A real bidirectional dependency is a design signal: third module, `shared/`, or an event — interface placement does not fix it |
+| Return an HTTP DTO across a module boundary | Domain types only; DTOs belong to the handler |
+| A cross-module read that publishes to the bus or writes the outbox | Reads have no side effects, or every consumer becomes a producer |
+| An internal HTTP endpoint to serve a sibling module | In-process interface injection — same binary, no network |
+| Register the consumer before the provider in `main.go` | Provider first, or the dependency is `nil` at runtime and no linter catches it |
