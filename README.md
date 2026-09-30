@@ -35,6 +35,23 @@ Basado en el patrón probado en `api-tbs-zinli-orchestrator-microservice` (PRs #
 
 ---
 
+### [`jira-activities`](./jira-activities/)
+
+Crea y redacta actividades en Jira siguiendo los estándares del equipo de Novopayment.
+
+**Cuándo se activa:** cuando se necesita crear o documentar un ticket Jira (CEB, sub-tarea, CDSI, CDPP, historia, GPBD).
+
+|Tipo|Descripción|
+|------|-------------|
+|**CEB**|Story de desarrollo del equipo POD 1 - Legión de Zeus|
+|**Sub-tarea**|Subtarea técnica de un CEB — mapea 1:1 con una rama de código|
+|**CDSI**|Solicitud de configuración al equipo Cloud - DevOps|
+|**CDPP**|Cambio de configuración en producción (incluye playbooks para microservicios K8s)|
+|**Historia**|Historia de usuario genérica|
+|**GPBD**|Proyecto de base de datos|
+
+---
+
 ### [`novo-legacy-migration-context`](./novo-legacy-migration-context/)
 
 Inicializa y mantiene el contexto de migración de un servicio legacy a Go (`.migration-context.yaml`): repos fuente, properties, BD, auth, cifrado, servicios externos e inventario completo de endpoints.

@@ -590,6 +590,12 @@ Refs: #CEB-1234
 - [ ] Screenshots/videos si hay cambios visuales
 - [ ] **Si supera límites:** incluye sección de justificación de sobre límite
 
+### Versionado y documentación
+
+- [ ] **CHANGELOG** actualizado con entrada para esta versión (requerido si hay `feat`, `fix` o `hotfix`)
+- [ ] **README** actualizado si se agrega o modifica una funcionalidad visible
+- [ ] **Versión bumpeada** siguiendo Semantic Versioning: `feat!`/breaking → MAJOR, `feat` → MINOR, `fix`/`hotfix` → PATCH
+
 > Si alguna respuesta es **NO** → Considera dividir el PR usando las técnicas de la sección 3.
 
 ---

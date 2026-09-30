@@ -70,4 +70,19 @@ Al cerrar una versión, agrupar commits así:
 
 ```
 
+## Versionado semántico
+
+Antes de registrar una entrada en el CHANGELOG, determina el número de versión:
+
+| Commits en el PR | Bump | Ejemplo |
+|------------------|------|---------|
+| `feat!` o footer `BREAKING CHANGE` | **MAJOR** | 1.2.3 → 2.0.0 |
+| Al menos un `feat` | **MINOR** | 1.2.3 → 1.3.0 |
+| Solo `fix`, `hotfix`, `docs`, `refactor`, `test` | **PATCH** | 1.2.3 → 1.2.4 |
+
+**Reglas:**
+- Al hacer bump MAJOR, resetear MINOR y PATCH a 0.
+- Al hacer bump MINOR, resetear PATCH a 0.
+- Proponer el bump al usuario y pedir confirmación antes de incluirlo.
+
 Si tu PR supera estos límites → ver `pr-guidelines.md` para dividirlo.

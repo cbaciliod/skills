@@ -4,11 +4,11 @@ Skill para crear y redactar actividades en Jira siguiendo los estándares del eq
 
 ## Tipos soportados
 
-| Tipo | Descripción | Directorio |
+|Tipo|Descripción|Directorio|
 |------|-------------|------------|
-| **CEB** | Story de desarrollo del equipo POD 1 - Legión de Zeus | `forms/ceb/` |
-| **Sub-tarea** | Subtarea técnica de un CEB — mapea 1:1 con una rama de código | `forms/sub-tarea/` |
-| **CDSI** | Solicitud de configuración al equipo Cloud - DevOps | `forms/cdsi/` |
+|**CEB**|Story de desarrollo del equipo POD 1 - Legión de Zeus|`forms/ceb/`|
+|**Sub-tarea**|Subtarea técnica de un CEB — mapea 1:1 con una rama de código|`forms/sub-tarea/`|
+|**CDSI**|Solicitud de configuración al equipo Cloud - DevOps|`forms/cdsi/`|
 
 ## Cómo usar
 
@@ -22,7 +22,7 @@ Si no especificas el tipo, el skill te preguntará con un menú numerado.
 
 ## Estructura
 
-```
+```text
 jira-activities/
 ├── SKILL.md              ← orquestación y menú principal
 ├── README.md             ← este archivo
