@@ -71,9 +71,25 @@ Migra **un** endpoint legacy a Go sobre go-bricks, fase por fase (≤400 líneas
 |`/migrate <endpoint>`|Migración por fases|
 |`list` / `status` / `roadmap`|Inventario, detalle por fase y orden recomendado|
 |`verify-parity` / `parity-solve`|Simetría Java↔Go y plan de correcciones|
-|`usecases` / `techdoc` / `devplan`|Casos de prueba, doc técnica con diagramas y Plan de Desarrollo Jira|
+|`usecases` / `techdoc`|Casos de prueba (`EST-NN`) y doc técnica con diagramas|
+|`migrate-ticket-plan` (`mtp`)|Plan de Desarrollo en la descripción del ticket Jira|
+|`migrate-doc-plan` (`mdp`)|Plan de Desarrollo Word/PDF para certificación QA (plantilla en `assets/`)|
 
 **Requiere:** `.migration-context.yaml` (skill anterior), `gh` ≥ 2.90 con `gh-stack` (si no, va serial), `make check` y los skills `go-dev-technical` y `go-bricks-modules`.
+
+---
+
+### [`go-dev-technical`](./go-dev-technical/)
+
+Valida servicios Go sobre go-bricks y sus PRs: toolchain, uso de go-bricks, SQL, contratos de mensajería, naming y diseño.
+
+|Subcomando|Qué hace|
+|------------|----------|
+|`review <PR_URL>`|Revisión con evidencia de un PR|
+|`scan <path>`|Auditoría del código con roadmap de remediación por fases|
+|`pr-fix <PR>`|Atiende comentarios de CodeRabbit, reviewers y CI|
+
+> Los skills `go-dev-technical`, `novo-legacy-migration-context` y `novo-legacy-migration-endpoint` se toman de la base [galopez-shark/skills](https://github.com/galopez-shark/skills) (`legacy/`) y se sincronizan desde ahí; no se editan localmente.
 
 ## Instalación
 
