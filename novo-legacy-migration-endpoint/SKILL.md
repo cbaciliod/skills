@@ -4,13 +4,19 @@ description: "Migrates a single legacy endpoint to Go using the context from nov
 license: MIT
 metadata:
   author: galopez-shark
-  version: "4.12.0"
+  version: "4.21.0"
   domain: migration
-  triggers: migration-endpoint, migrate, novo-migrate, migrar endpoint, migrate endpoint, migrate list, migrate status, migrate roadmap, migrate devplan, plan-dev
+  triggers: migration-endpoint, migrate, novo-migrate, migrar endpoint, migrate endpoint, migrate list, migrate status, migrate roadmap, migrate migrate-ticket-plan, mtp, migrate migrate-doc-plan, mdp, migrate devplan, plan-dev, plandoc, docx plan de desarrollo
   role: specialist
   scope: implementation
   output-format: code
   related-skills: novo-legacy-migration-context, go-dev-technical, go-bricks-modules, golang-pro, golang-testing, openapi-spec-generation
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: 'bash "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/novo-legacy-migration-endpoint}/hooks/pr-publish-guard.sh"'
 ---
 
 # Migrate Endpoint
@@ -26,7 +32,8 @@ Migrates a single legacy endpoint to an idiomatic Go microservice. Requires `.mi
 - `/migrate parity-solve <endpoint> cases (<ids>)` (alias `solve-parity`) — plan fixes for the selected verify-parity divergences (≤300 new lines / ≤10 files per phase)
 - `/migrate usecases <endpoint>` (alias `casos`) — extract the Java use-case / test-scenario list (testRigor-style, con IDs `EST-NN`) — QA testing del Go + base de la tabla de escenarios del Plan de Desarrollo
 - `/migrate techdoc <endpoint>` (alias `doc-tecnico`) — generate the technical doc (scope, glossary, structure, construction) + class/flow/data diagrams as images (asks for the output folder)
-- `/migrate devplan <endpoint>` (alias `plan-dev`) — generate the Jira development plan (Plan de Desarrollo) for an endpoint: context, technical description, files, acceptance criteria, DoD, technical notes — formatted for direct update to Jira ticket description
+- `/migrate migrate-ticket-plan <endpoint>` (alias `mtp`) — generate the Jira development plan (Plan de Desarrollo) for an endpoint: context, technical description, files, acceptance criteria, DoD, technical notes — formatted for direct update to Jira ticket description
+- `/migrate migrate-doc-plan <endpoint>` (alias `mdp`) — generate the formal Plan de Desarrollo **Word/PDF document for QA / certificación** (comparativo or solo-certificación; does not touch Jira)
 - `/migrate help` (alias `?`) — show available subcommands, usage, and key rules
 
 ---
@@ -55,9 +62,14 @@ SUBCOMMANDS
                                base de la tabla de escenarios del Plan de Desarrollo (alias: casos).
   /migrate techdoc <ep>        Technical doc (scope, glossary, structure, construction) + class/flow/
                                data diagrams as images. ASKS for the output folder (alias: doc-tecnico).
-  /migrate devplan <ep>        Jira development plan (Plan de Desarrollo): context, tech description,
+  /migrate migrate-ticket-plan <ep>
+                               Jira development plan (Plan de Desarrollo, SOLO Jira): context, tech description,
                                files, acceptance criteria, DoD, tech notes. Updates Jira ticket
-                               description directly (alias: plan-dev).
+                               description directly (alias: mtp).
+  /migrate migrate-doc-plan <ep>
+                               Formal Plan de Desarrollo as Word + PDF for QA / certificacion (tabla de
+                               Pruebas Unitarias comparativa o solo-Go, diagramas, certificacion). NO
+                               toca Jira (alias: mdp).
   /migrate help                This help (alias: ?).
 
 REQUIRES  .migration-context.yaml — run /migration-context first to create it.
@@ -253,7 +265,7 @@ Show the full migration roadmap with recommended order and effort estimates.
 │ - enrollAndIssue depends on enrollment (shares validation + DB writes)           │
 │                                                                                 │
 │ go-bricks COMPONENTS NEEDED                                                     │
-│ All waves: server.HandlerContext, database.Interface, logger.Logger             │
+│ All waves: server.HandlerContext, database.Interface, logger.Logger              │
 │ Wave 2+: cryptoutil (JWE), httpclient.Client                                    │
 │ Wave 3: db.Begin/tx.Commit (transactions), mocks.MockTx (tests)                 │
 └──────────────────────────────────────────────────────────────────────────────────┘
@@ -452,12 +464,14 @@ Usage: `/migrate parity-solve cashin cases (9,10,11)`
    go-bricks / existing helpers; defer to `target.reference_repo` for patterns.
 5. **Group changes into phases under the cap** — **≤300 new lines AND ≤10 files per phase** (impl +
    tests). If the selected cases exceed it, split into `parity-1`, `parity-2`, … Each phase includes
-   tests, `make check` (0 issues, coverage ≥85%), and a version bump.
+   tests, `make check` (0 issues, coverage floor 70%, goal 85%), and a version bump.
 6. **Present the roadmap and WAIT for approval.** Before creating any branch, **ASK the user for the
    Jira epic/ticket** for these parity fixes. If they give an epic, **search its children for the
    ticket matching this endpoint, show the candidate, and confirm it** before branching (same as
-   Phase START step 2). Then execute phase by phase: **always `git checkout main && git pull` first,
-   then create** `feature/{ticket}-parity-{n}` **from `main`** — one phase merged before the next.
+   Phase START step 2). Then execute phase by phase, creating `feature/{ticket}-parity-{n}` on the
+   base of the active mode (see "Phase sequencing"): stacked → on the previous parity phase's branch
+   (`gh stack add`); serial → `git checkout main && git pull`, branch from `main`, one phase merged
+   before the next.
 
 ### Output (roadmap)
 
@@ -480,7 +494,7 @@ Phases (≤300 líneas · ≤10 files c/u):
 - **Cap is 300 lines / 10 files per phase** — HARD, stricter than the standard 400. Split otherwise.
 - **Verify each case against Java before fixing** — messages/codes are immutable, match exactly.
 - **Only fix the selected cases** — never touch cases the user didn't choose.
-- One branch per phase from `main`; tests + `make check` + version bump per phase; no commit without approval.
+- One branch per phase (base = previous phase if stacked, `main` if serial); tests + `make check` + version bump per phase; no commit without approval.
 
 ---
 
@@ -655,36 +669,92 @@ Cada caso se redacta así:
 
 ---
 
-## Subcommand: `/migrate devplan <endpoint>` (alias `plan-dev`)
+## Subcommand: `/migrate migrate-ticket-plan <endpoint>` (alias `mtp`; legacy: `devplan`, `plan-dev`)
 
 Generates the **Plan de Desarrollo** (development plan) for a migration endpoint and updates the
-Jira ticket description directly. This is the developer-facing technical document that lives in
+Jira ticket description directly. (The Word/PDF document for QA is `/migrate migrate-doc-plan`.) This is the developer-facing technical document that lives in
 Jira — written in developer language (Spanish), with the exact structure used by the team
 (modeled after CEB-5602 blockUnblock).
 
 Accept the endpoint by name, number, or Java method name.
 
+### Shared plan data (single source of truth for `mtp` and `mdp`)
+
+`migrate-ticket-plan` and `migrate-doc-plan` describe the same endpoint, so they read and write
+**one** file instead of each re-deriving (and possibly contradicting) the other:
+`docs/modules/<go_module>/<endpoint>.plan-data.yaml` in the Go repo — **local only, never committed
+or pushed**.
+
+**Ignore it before writing (MANDATORY):** the file must be git-ignored so it cannot reach the repo.
+```bash
+git check-ignore -q docs/modules/<go_module>/<endpoint>.plan-data.yaml \
+  || echo 'docs/modules/**/*.plan-data.yaml' >> "$(git rev-parse --git-path info/exclude)"
+git check-ignore -q docs/modules/<go_module>/<endpoint>.plan-data.yaml && echo IGNORED
+```
+`.git/info/exclude` is local to the checkout, so the Go repo gets no `.gitignore` diff. If the check
+still fails, **do not write the file** — tell the user. If the repo's own `.gitignore` already covers
+it, nothing to add. Because it is not versioned, a teammate or a fresh clone will not have it: then
+`mtp`/`mdp` simply rebuild it (step 5) and ask the case questions again.
+
+```yaml
+ticket: CEB-XXXX
+state: estimado            # estimado (not_started / in progress) | implementado (real, after last phase)
+updated: 2026-11-05
+flows:                     # parity flows from the Java origin, stable ids
+  - {id: F1, step: "Sin Authorization", result: "401 / rc -102"}
+dependencies:
+  tables: []
+  external: []
+  modules: []
+  config: []
+cases:                     # approved by the user after /migrate usecases
+  - {id: EST-01, flow: F1, decision: include}
+  - {id: EST-07, flow: F4, decision: exclude, reason: "requiere stub externo"}
+```
+
+Rules: if the file exists, **reuse it** and ask only about what changed (new flows, new cases,
+state); if it does not, create it after step 5 of whichever subcommand runs first. The `EST-NN`
+ids are identical in the Jira DoD and the Word table. Never put PANs, tokens or credentials in it — it stays local, but it is still treated as sensitive.
+
 ### Workflow
 
 1. **Load `.migration-context.yaml`** — if missing, tell the user to run `/migration-context` first.
 2. **Resolve the endpoint** in `endpoint_inventory`. Get the ticket number. If no ticket, ask the user.
-3. **Read the Java source** (resource/controller + service + dao/repository) + properties files —
-   same source-of-truth as other subcommands. Java code is the spec.
+3. **ALWAYS read the migration origin (Java source) — mandatory, even if the endpoint is already
+   migrated:** resource/controller + service + dao/repository + properties files. Java is the spec.
+   From it extract and keep, for sections 2 and 5 (and save them in the shared plan data above): **(a) the parity flows** (every branch: auth,
+   validation, business, external, DB, success — with its rc/HTTP), **(b) the dependencies**: tables
+   and columns, external services/connectors, other modules or shared components reused, properties
+   and config keys. Never write the plan from memory of the Go code alone.
 4. **Read the Go source** if the endpoint is already migrated (`status: done` or `in_progress`) —
    `internal/modules/<go_module>/` (handlers, service, repository, domain). If `not_started`, derive
    the plan from the Java analysis + existing Go patterns in the project.
-5. **Generate the Plan de Desarrollo** following the template below (6 numbered sections).
+5. **Run `/migrate usecases <endpoint>` and ask the user which cases to include** (skip the questions
+   already answered in the shared plan data; ask only what is new) (some cannot be
+   replicated or simulated by QA — propose include/exclude with the reason, the user decides). The
+   approved set feeds the DoD of section 5.
+5b. **Generate the Plan de Desarrollo** following the template below (6 numbered sections) for the
+   Jira description, and **write/update the shared plan data file**. The plan opens with a state
+   line: `Plan de Desarrollo vN — {fecha} — Estado: ESTIMADO` (endpoint not migrated yet) or
+   `Estado: IMPLEMENTADO` (real Go code, after the last phase). Re-run `mtp` and flip it to
+   IMPLEMENTADO when the last phase merges, so QA never certifies against a stale plan.
 6. **Present to the user** for review. Show the full document in chat.
-7. **Ask**: update Jira ticket description? (yes/no)
-   - If yes → convert to ADF and PUT to the ticket via Jira REST API.
-   - If no → done, the user copies it manually.
+7. **Protected Jira update** (see "Jira update" below): read the current description, show the diff of
+   what will change, back it up, and only then write — after the user approves **that diff**.
+   This subcommand produces **only** the Jira description.
+   The Word/PDF document for QA/certificación is a different deliverable with its own subcommand:
+   **`/migrate migrate-doc-plan <endpoint>`**.
+8. **Print the completion checklist with evidence** — one row each: Java origin read (files), flows and
+   dependencies extracted (counts), `usecases` run, cases approved by the user (included/excluded),
+   shared plan data written **and confirmed ignored (`git check-ignore`)**, Jira description read + backup path, diff approved, Jira updated
+   (issue key + timestamp). A row without evidence is `❌ NO EJECUTADO`, never `✅`.
 
 ### Template (6 sections — MANDATORY, in this exact order)
 
 The generated plan MUST follow this structure. All content in **Spanish**. Derive everything from
 the actual Java source + Go code — never invent.
 
-````
+```
 ## 1. Contexto / Motivación
 
 {Qué endpoint es, en qué servicio Java vive (clase + método), qué hace funcionalmente.
@@ -727,6 +797,15 @@ Si hay diferencias con endpoints similares, incluir tabla comparativa.}
 {response body literal — rc, msg, y campos de datos}
 ```
 
+### Dependencias (del origen Java)
+
+| Tipo | Detalle |
+|------|---------|
+| Tablas | {tabla.columnas leídas/escritas} |
+| Servicios externos | {conector, método, path} |
+| Módulos / componentes reutilizados | {CustomerReader, handler base, ...} |
+| Configuración | {properties / keys de config} |
+
 ### Errores de negocio
 
 | Condición | HTTP | rc | Mensaje |
@@ -765,11 +844,22 @@ Reutilizado sin duplicar: {lista de componentes compartidos que se reusan}
 - {Criterio 3: qué servicios externos se llaman y en qué orden}
 - {Criterio 4: paridad de errores con Java}
 - {Criterio 5: make check pasa con 0 issues}
-- {Criterio 6: cobertura >= 85%}
+- {Criterio 6: cobertura >= 70% (piso), meta 85%}
 
 ## 5. Definition of Done
 
-{Lista de condiciones para considerar el ticket DONE:}
+{Lista de condiciones para considerar el ticket DONE. QA también usa este ticket: el DoD es la
+lista de lo que se certifica. Cada flujo de paridad de la sección 2 es un ítem verificable aquí,
+referenciando su paso (no se copia el flujo; se apunta a él). Incluir SOLO los casos aprobados
+por el usuario tras `/migrate usecases`; los no replicables/no simulables se listan aparte.}
+
+**Flujos de paridad con Java a certificar (QA):**
+- [ ] EST-01 · Flujo 2.1 — Sin Authorization → rc/HTTP {x}
+- [ ] EST-02 · Flujo 2.3 — {condición de negocio} → rc/HTTP {x}, mensaje exacto de RESPONSE_CODES
+- [ ] EST-NN · Flujo 2.N — Éxito → respuesta {campos}, paridad Go vs Java
+**No certificables manualmente (excluidos, con motivo):** EST-NN {stub externo / falla inyectada / concurrencia}
+
+**Técnicos:**
 - PR revisado y aprobado ({branch names de las fases})
 - make check limpio (0 lint issues, 0 race conditions)
 - Mensajes de error verificados contra Java {servicio Java fuente}
@@ -786,7 +876,7 @@ Reutilizado sin duplicar: {lista de componentes compartidos que se reusan}
 - {Nota sobre auth: middleware, parámetro explícito, etc.}
 - {Nota sobre ramas de desarrollo y fases}
 - {Nota sobre cobertura final por paquete}
-````
+```
 
 ### Content rules
 
@@ -803,23 +893,35 @@ Reutilizado sin duplicar: {lista de componentes compartidos que se reusan}
 - **Diferencias con endpoints similares** — if the endpoint is symmetric to another (cashIn/cashOut,
   block/unblock, associate/disassociate), include a comparison table showing the differences.
 
-### Jira update
+### Jira update (protected — the description may hold text from the PO or QA)
 
-When the user approves the update:
+The write **replaces** the whole description, and it is visible to other people, so it never runs
+blind. Use the **Atlassian connector** (`getJiraIssue` / `editJiraIssue`), not raw REST calls with
+credentials — if it needs authorization, tell the user to authorize it; never ask for or handle a
+password or token.
 
-1. Convert the markdown to **Atlassian Document Format (ADF)** — headings, paragraphs, bullet lists,
-   tables, code blocks, inline code. Map each markdown element to its ADF equivalent.
-2. PUT to `https://jira4novo.atlassian.net/rest/api/3/issue/{TICKET_KEY}` with the ADF description.
-3. Confirm success:
+1. **Read** the current description (`getJiraIssue`). Save it as a backup in the scratchpad
+   (`<TICKET>-description-backup.md`) and print the path.
+2. **Split** it: the plan block is delimited by the heading `Plan de Desarrollo vN — …`. Everything
+   outside that block (PO text, QA notes, links) is **preserved untouched**. No marker found → treat
+   the whole current text as "other content" and append the plan below it.
+3. **Show the diff** (what is removed/replaced, what is kept) in chat and ask the user to approve
+   **that diff**, not just the plan.
+4. Convert only the plan block to **Atlassian Document Format (ADF)** — headings, paragraphs, bullet
+   lists, tables, code blocks, inline code — and write the merged description (`editJiraIssue`).
+5. **Idempotent re-run:** a second run replaces the existing plan block (bumping `vN` and the date),
+   it never stacks a second copy.
+6. Read the ticket back to verify the write, then confirm:
    ```
-   ✅ Plan de Desarrollo actualizado en {TICKET_KEY}
+   ✅ Plan de Desarrollo actualizado en {TICKET_KEY} (backup: <path>)
    ```
 
 ### When to use this vs other subcommands
 
 | Need | Subcommand |
 |------|-----------|
-| Jira ticket description (Plan de Desarrollo for devs) | **`devplan`** ← this one |
+| Jira ticket description (Plan de Desarrollo for devs) | **`migrate-ticket-plan`** (`mtp`) ← this one |
+| Word/PDF Plan de Desarrollo for QA / certificación | `/migrate migrate-doc-plan` |
 | Jira ticket for PO (Historia de Usuario + subtasks) | `/migration-context ticket` |
 | Technical doc + diagrams (offline/docs folder) | `/migrate techdoc` |
 | QA test scenarios | `/migrate usecases` |
@@ -827,7 +929,246 @@ When the user approves the update:
 
 ---
 
-## Subcommand: `/migrate techdoc <endpoint>` (alias `doc-tecnico`)
+
+## Subcommand: `/migrate migrate-doc-plan <endpoint>` (alias `mdp`; legacy: `plandoc`, `plan-doc`, `docx`)
+
+Generates the **formal Plan de Desarrollo document (`.docx` + `.pdf`)** for a migration endpoint —
+the QA / certificación artifact. It does **not** touch Jira; the Jira description is a different
+deliverable (`/migrate migrate-ticket-plan`). Same endpoint, different format and audience.
+
+Accept the endpoint by name, number, or Java method name.
+
+### Workflow
+
+1. **Load `.migration-context.yaml`** — if missing, tell the user to run `/migration-context` first.
+2. **Resolve the endpoint** in `endpoint_inventory`. Get the ticket number. If no ticket, ask the user.
+3. **Read the Java source** (resource/controller + service + dao/repository) + properties files — Java is the spec.
+4. **Read the Go source** if migrated (`done` / `in_progress`); if `not_started`, derive from the Java
+   analysis and the existing Go patterns.
+5. **Ask ONE question before generating anything (MANDATORY)**:
+   > ¿Este Plan de Desarrollo es un **comparativo** (migración Java→Go, la tabla de Pruebas
+   > Unitarias muestra la respuesta Golang y la respuesta Java lado a lado) o es **solo
+   > certificación** (endpoint nuevo sin legacy detrás, la tabla de Pruebas Unitarias muestra
+   > únicamente la respuesta Go)?
+   This decides the shape of the Pruebas Unitarias table — never guess it from
+   `.migration-context.yaml` alone, since a `done` endpoint can still be a non-migration addition.
+5b. **Reuse the shared plan data** (`docs/modules/<go_module>/<endpoint>.plan-data.yaml`, see the
+   `migrate-ticket-plan` section) for flows, dependencies and the approved `EST-NN` cases — ask only
+   what changed. Update it if you add or drop cases, so Jira and the Word file never diverge.
+6. **Draft the content in sub-steps 6.1 → 6.8 — one at a time, each shown in chat and approved
+   by the user before the next** (see "Sub-steps of step 6" below). Nothing is built until 6.8 passes.
+7. **Build the `.docx` and `.pdf`** following "Process" below, and run its final residue grep.
+8. **Report** the output paths, the case count, and print the completion checklist with evidence
+   (one row per sub-step 6.1-6.8 + response images generated (count, marked "no capturadas") + build + residue grep; a row without evidence is `❌ NO EJECUTADO`).
+
+**Output folder (fixed):** `.../proyectos/zinli/{TICKET}({Descripción})/documentacion/` — the `.docx`,
+`.pdf`, the three diagram images and their `.plantuml` sources all live together there, as in
+CEB-5361 / CEB-5614. Create the folder if it is missing; never write outside it.
+
+### Sub-steps of step 6
+
+Every text sub-step has a **hard character cap**. Count it (`len()` on the final string, spaces
+included) and print `N/300` next to the draft; over the cap → shorten and recount, never ship it.
+Text comes from the real Java/Go code, never invented, in Spanish, developer language.
+
+| Sub-step | Section | Content | Rule |
+|---|---|---|---|
+| **6.1** | Alcance | Text ≤ **300 chars** (what is migrated/added, endpoint + method + path, read/write, why) **plus** a separate last line `Ticket: https://jira4novo.atlassian.net/browse/{TICKET}` | The ticket line is NOT counted in the 300 |
+| **6.2** | Definiciones, Acrónimos y Abreviaturas | ≤ **300 chars**, only terms that actually appear in the document (PAN, cardToken, rc, …) | If nothing needs defining write `N/A` |
+| **6.3** | Estructura | ≤ **300 chars**: layers/modules (handlers, service, repository, domain) and what each does, from the real Go tree | No file listings |
+| **6.4** | Construcción | ≤ **300 chars**: Go/go-bricks version, QueryBuilder/Entity, tables touched, notable decisions (e.g. ambiguous row → "no registrada") | Real tables and versions only |
+| **6.5** | Diagramas | Generate **3 images** in the output folder: `{endpoint} - Diagrama de Clases.png`, `{endpoint} - Diagrama de Flujo.png`, `{endpoint} - Estructura de Datos.png`, each with its `.plantuml` source | Flow: reuse the validated `.plantuml` from `docs/modules/<module>/` + Novopayment skin; classes/data from the real Go types and tables — never generic. All three are mandatory (CEB-5614 shipped without the flow image) |
+| **6.6** | Ajustes realizados | Table `Aplicaciones involucradas \| Cambios aplicados`, filled from the phases' PRs/commits (`git log`/`gh pr list`) and the `go.mod` diff (e.g. endpoint enabled, go-bricks vX → vY, new config) | **Never empty or missing** — an empty section breaks the TOC with `¡Error! Marcador no definido`. Show the rows for approval |
+| **6.7** | Pruebas Unitarias | Run **`/migrate usecases <endpoint>`** to get the accurate scenario list, then **ask the user which cases to include**, proposing a verdict per case (include / exclude) | See "Case selection" below. Shape follows the comparativo vs solo-certificación answer of step 5 |
+| **6.8** | Revisión previa al build | Print: `N/300` per text sub-step, the three image paths (exist ✅/❌), Ajustes rows count, case count after selection | Any ❌ blocks the build |
+
+**Case selection (6.7).** `usecases` returns the full set (happy, negative, edge, external, auth).
+Present them as a table with a proposed decision and the reason, and ask the user — one
+`AskUserQuestion` per group if there are many:
+
+- **Reproducible by QA with Postman** → propose *include*.
+- **Needs an external stub/mock** (KYC, SGC, third-party connector), **fault injection** (forcing a DB
+  failure) or **real concurrency** → propose *exclude* and mark the reason "no replicable / no
+  simulable". The user decides; never include them silently and never drop them silently.
+- After the selection, renumber every `EST-NN` / "N°" sequentially and update every place that states
+  the total (Control de Revisión row, summaries).
+
+**Sections that come from the base template and are filled in step 7** (not drafted above):
+Historial de cambios, Control de Revisión, "Nombre del esquema de la base de datos",
+Datos para Configurar e Instalar (the `curl` for Java and Go use `Authorization: Bearer <token>` —
+**never a real token**, PCI policy), and Requisitos para la Certificación (`Ruta de Repositorio` =
+latest git tag on `main`, not a raw commit SHA; `Usuario`/`Clave` empty).
+
+### Process (Word/PDF)
+
+
+This produces the corporate `.docx`/`.pdf` artifact, independent of the Jira description above.
+**Read `PROMPT_PLAN_DESARROLLO.md` in full before starting** — it owns the project-agnostic
+process (8 phases: discovery, question round, build, Word generation, PlantUML diagrams, Python
+helpers, PDF export, final checklist). What follows here is only the migration-specific layer on
+top of that generic process — gotchas learned building CEB-5633 (createDebitCard), don't
+rediscover them by trial and error.
+
+**Files (bundled with this skill — portable, works on any machine without the OneDrive mount):**
+- Guide: `assets/PROMPT_PLAN_DESARROLLO.md` (relative to this skill's own directory)
+- Base template (always clone, never create from scratch, never edit a sibling ticket's filled
+  docx in place): `assets/Plan_de_Desarrollo_BASE.docx` (relative to this skill's own directory).
+  If the user's OneDrive has a newer version of either file, prefer theirs and update this skill's
+  bundled copy in the same step — don't silently drift from the canonical source.
+- Destination: `.../proyectos/zinli/{TICKET}({Descripción})/documentacion/Plan_de_Desarrollo_{TICKET}({Descripción}).docx`
+  (+ matching `.pdf`). If that folder already has a `.docx` under this ticket's name, **open and
+  read it first** — it may contain another ticket's content pasted in by mistake (this happened on
+  CEB-5633: the file was named for CEB-5633 but internally was 100% CEB-5614 content). Never trust
+  the filename; grep the actual paragraphs/tables for the ticket number and endpoint name before
+  treating it as a starting point. If it's wrong, clone fresh from BASE — never patch over
+  contaminated content.
+
+**Before writing anything, inspect the REAL base template structure** (don't assume it matches a
+previously-filled sibling doc — they can diverge): dump every `doc.paragraphs` (index + style) and
+every `doc.tables` (all rows/cells, including `gridSpan`/`vMerge` via the XML) with a throwaway
+python-docx script. As of the version used for CEB-5633, the base template has **6 real headings
+you'll touch** (Historial de cambios, Control de Revisión, Alcance, Definiciones, Estructura →
+Descripción de Clases / Estructura de datos → Nombre del esquema, Construcción, Ajustes
+realizados, Pruebas Unitarias, Datos para Configurar e Instalar, Requisitos para la Certificación)
+and **6 tables** in that order. It does **not** ship a "Descripción de Flujo" heading, and its
+Pruebas Unitarias table is a **flat 3-column table with no example row** (N° | Alcance |
+Descripción, span 1 everywhere) — confirm this hasn't changed before assuming either shape.
+
+**The comparativo/sin-comparativa branch (from step 5 of the Workflow above) changes the Pruebas
+Unitarias table shape:**
+
+- **Sin comparativa** (no legacy): fill the base's native flat table as-is — one row per `EST-NN`,
+  clone rows with `copy_row_and_fill`, no merge needed. Simple, low risk.
+- **Comparativo** (migración): you need a **3-row-per-case pattern** (case header row with
+  `gridSpan` on the Alcance columns → label row "RESPONSE GOLANG" / "RESPONSE JAVA" with `vMerge` →
+  content row with the two responses side by side) that **the clean base template does not ship as
+  an example**. Don't hand-build that `gridSpan`/`vMerge` XML — it's exactly the kind of thing that
+  silently corrupts a `.docx`. Instead, **source that 3-row block from an already-finished sibling
+  ticket's doc that used the comparativo format** (e.g. the CEB-5614 or CEB-5633 filled docs),
+  deep-copy its header + one case's 3 rows into the destination's Pruebas Unitarias table, clear
+  every cell with `cell_clear_and_set`, then clone that cleaned block once per `EST-NN` with
+  `copy_row_and_fill`. This is the only way to get real merges instead of built-by-hand ones.
+- **Always add a "Descripción de Flujo" H2** (clone the "Descripción de Clases" paragraph for the
+  heading style) between Clases and Estructura de datos — the base template doesn't have it by
+  default, but the process always needs a flow diagram there.
+
+**Response cells are Postman-style IMAGES (as in the reference docs CEB-5361 / CEB-5614).** In the real
+Plan de Desarrollo, each `RESPONSE GOLANG` / `RESPONSE JAVA` cell holds a **screenshot of the Postman
+request and response** (method + URL, headers table, status, body with `rc`/`msg`), not JSON text. The
+user chose to have these **generated** as images:
+
+- **Render one PNG per response** (Pillow, or an HTML → PNG render) with a Postman-like layout: method
+  and URL line, a headers table (`country`, `language`, `channel`, `Content-Type`, `accept`, `switch`,
+  `Authorization: Bearer <token>`), the status badge and the pretty-printed JSON body. Dark theme, ~600 px
+  wide, legible when scaled to the cell. Save them next to the docx (e.g. `casos/EST-NN-go.png`,
+  `EST-NN-java.png`) and insert with `run.add_picture` into the cell — Go in column 1, Java in column 2.
+- **Content comes from the real code, never invented:** Go from the handler/service/`RESPONSE_CODES`,
+  Java from the Java source and properties. The request mirrors the case (headers present or omitted as
+  the case says). No real token, PAN, account number, expiry or CVV: use `Bearer <token>` and the
+  masked/test values only.
+- **Transparency is mandatory:** these images are **derived from the code, not captured from a run**.
+  Each image carries a small, legible footer line `Respuesta esperada — derivada del código (no capturada)`,
+  and the final report states `N imágenes generadas (no capturadas)`. Never present a generated image as
+  evidence of an execution. If QA needs real evidence for a case, the user replaces that image with a real
+  Postman capture — keep the same file name so the swap is trivial.
+- **Solo-certificación** docs have only the Go image; **comparativo** docs have both.
+
+**Non-reproducible cases: ask the user, default to removing them, never silently list them as
+normal cases.** Any `EST-NN` that requires an external stub/mock (KYC, SGC, any third-party
+connector), fault-injection (forcing a DB failure), or real concurrency (two parallel requests) is
+**not something QA can trigger manually with Postman in the standard flow**. First pass: prefix
+its Alcance with **"🔒 NO REPRODUCIBLE MANUALMENTE — "** and note what it needs. Then **ask the
+user whether to keep it flagged or remove it from the table entirely** — on CEB-5633 the user's
+call was to remove all 6 such cases outright ("no se puede así que sobra"), since a flagged-but-
+unexecutable row in a QA certification doc is still noise. Removing a 3-row comparativo block:
+delete its 3 `w:tr` elements from the table XML, then **renumber every remaining `EST-NN` /
+"N°" sequentially** (don't leave gaps) and update every place that states the total case count
+(Control de Revisión row, any summary note) — a stale "22 casos" after deleting 6 is an immediate
+tell that the doc wasn't finished.
+
+**Headers validation needs one case PER field PER failure mode, never two generic buckets.** A
+"Header requerido ausente" / "Header con formato inválido" pair collapsing country+language+channel
+into 2 rows is under-specified — the team's own reference docs (e.g. CEB-5614) split each header
+into its own case: *Sin header country*, *Sin header language*, *Sin header channel*, *Country
+formato inválido*, *Language formato inválido*, *Channel formato inválido* (6 cases minimum,
+matching whatever fields `auth.HeadersValidator`/equivalent actually validates — don't invent
+fields it doesn't check, like Content-Type/Accept, unless the code validates those too). Apply the
+same "one case per field per failure mode" principle to any other multi-field validator.
+
+**Never leave a literal `"..."` placeholder in a response example.** It reads as unfinished. Fill
+every field with a realistic, internally-consistent example value (an ISO datetime, a plausible
+token/UUID shaped like the real one — e.g. the exact 37-char UUID-hex+salt format `generateCardToken`
+produces, if that's the field) instead of an ellipsis. This is NOT a PCI concern — these are
+non-sensitive example dates, tokens and IDs, not PAN/CVV/passwords — so there's no reason to leave
+them as placeholders. **When a label field is blank because it genuinely doesn't apply (not
+because you forgot it), write `"N/A — <one-line reason>"`** instead of leaving the cell visually
+empty — an empty-looking cell in a finished certification doc reads as an oversight, not as "this
+doesn't apply". PCI passwords (`Clave`) are the one exception: those stay truly empty, never even
+`"N/A"` with invented text that could be mistaken for a real value — a short reason belongs in the
+adjacent `Usuario` cell instead (e.g. "N/A — autenticación Bearer, sin login usuario/contraseña").
+
+**The comparativo table's column 0 is a hidden trap — never write content into it.** In the 3-row
+block, column 0 of the label row ("RESPONSE GOLANG"/"RESPONSE JAVA") and column 0 of the content
+row are **vertically merged into ONE cell** (`vMerge`) that must stay blank as a gutter. Go's
+response goes in column 1, Java's in column 2 (column 3 mirrors column 2 via horizontal `gridSpan`
+— writing to one writes to both, since python-docx returns the same Cell object for merged
+columns). **The single most common mistake building this table is an off-by-one**: treating
+column 0 as "the Go column" and columns 1/2 as "the two Java columns" — this silently (a) pollutes
+the blank gutter with Go's text, visible bleeding into the label row, and (b) leaves BOTH visible
+response columns showing Java's text, making it look like Go behaves identically to Java even when
+it was supposed to differ (a real divergence disappears from the document). **After filling the
+table, run a verification pass, case by case, comparing each Go cell's text against what you
+actually know Go does (not what you wrote in bulk) — a bulk find/replace across many rows is
+exactly how this corruption happened on CEB-5633 (6 of 20 cases had Go silently showing Java's
+behavior, caught only when the user spotted one by eye).** Fix one case, re-read it back, THEN
+move to the next — don't trust a large batch edit across the whole table without rereading it.
+
+**Certificación table has no labels in the clean base** — write them yourself (copied verbatim
+from a finished sibling doc's layout: Código de Prioridad, Fecha, N° de Ticket, Usuario
+Solicitante, Incidente/Requerimiento/Proyecto de Cambio, Aplicación, Tipo, País, Subsidiarias, URL,
+Usuario, Clave, Ruta de Repositorio, Otros) using `cell_clear_and_set` for both label and value in
+the same pass, to avoid leftover text from whatever doc you copied the layout from.
+
+**PCI — never put real or placeholder credentials in "Usuario"/"Clave".** Leave both empty even
+when a value is technically known; this is the global PCI policy (`~/.claude/CLAUDE.md`), not
+optional per-ticket judgment.
+
+**"Ruta de Repositorio" is the deployed-to-TEST reference, not an arbitrary commit.** Prefer the
+latest git tag on `main` (`git tag --sort=-creatordate | head -1`) over a raw commit SHA. If you
+cannot confirm via `gh` (auth can expire mid-session) that this specific tag already deployed to
+TEST, say so explicitly to the user as a pending verification — don't silently assume it did.
+
+**Diagrams**: reuse an existing, already-validated `.plantuml` from `docs/modules/<module>/` for
+the flow diagram (never invent a new flow when the team already maintains one) — just prepend the
+Novopayment skin block (FASE 5 of the guide) and re-render. Class and data-structure diagrams are
+usually new; build them from the real Go types/tables (never generic placeholders — a prior
+session had its first diagram attempt rejected for being generic), apply the same skin, render
+with the local `plantuml` binary.
+
+**If the reused flow diagram is too tall to fit one page** (a sequence diagram with many `alt`
+error blocks grows vertically fast — CEB-5633's came out at a 1:2.2 aspect ratio), don't just
+shrink the image until the text is unreadable. Condense each error `alt` block from its full
+2-arrow-plus-`alt`/`end` form into a single `note right of <participant>` summarizing that step's
+rc(s) — this keeps every error path documented while cutting the diagram's height roughly in half,
+often enough to reach a near-square aspect ratio that fits one page at a readable size. Keep the
+happy-path arrows exactly as they are; only the error branches get collapsed into notes.
+
+**Final residue check is a real grep, not a visual skim.** After saving, search every XML part of
+the `.docx` (it's a zip) for keywords unique to whatever content you copied structure/layout from
+(ticket number, endpoint name, sample PAN/IDs) and confirm zero matches — except expected false
+positives like a numeric `w:id` in `webSettings.xml` that happens to contain the ticket number as
+a substring (verify it's inside a larger number, not the standalone ticket reference).
+
+**If this is intricate enough to risk breaking table merges, delegate it** (per this repo's
+Fable-delegation policy) to a `general-purpose` agent with: the exact base template + guide paths,
+the content already fully drafted (text for all 6 sections + the EST table content, resolved
+BEFORE delegating — never ask the agent to invent business content), and explicit instructions to
+**stop and report back** if the real template structure doesn't match what's described here, rather
+than improvising a merge by hand.
+
+---
+
+
 
 Generates the endpoint's **technical document** (in text) + **three diagrams as images** (class, flow,
 data). Reads Java + Go; READ-ONLY on the project code — it only writes the diagram/image files into
@@ -1213,18 +1554,22 @@ it to the PR:
 |---|---|
 | `fmt.Sprintf` / `Fprintf` / `+` concatenation / `strings.Replace` into SQL | **BLOCKER — injection vector.** No exceptions, not even for a one-off admin query |
 | Raw SQL `const` the builder *could* express | SHOULD-FIX — migrate it |
-| Raw SQL `const` the builder cannot express, **with a comment saying why** | ✅ Justified, and check 18b honors that justification instead of re-flagging it |
-| Raw SQL `const` the builder cannot express, **with no comment** | NIT — and the reviewer has to reconstruct your reasoning |
+| Raw SQL `const` the builder cannot express, **with its `// SECURITY: Manual SQL review completed - …` annotation** | ✅ Justified, and check 18b honors that justification instead of re-flagging it |
+| Raw SQL `const` the builder cannot express, **with no annotation** | SHOULD-FIX — go-bricks requires the annotation at every raw call site |
 
 **Two rules that follow, and they are the whole point of doing this at construction time:**
 
 1. **Raw does NOT mean interpolated.** A raw statement still binds every value as a
-   parameter — `:param` (Oracle) or `$N` (PostgreSQL). The escape hatch is from the
+   parameter — positional `:1..n` (Oracle; the builder generates them, and `database.Raw(sql,
+   args...)` takes positional args) or `$N` (PostgreSQL). The escape hatch is from the
    *builder*, never from parameterization. A raw query with a value pasted into the string
    is the BLOCKER above, and being raw does not excuse it
-2. **Write the WHY comment now, in the same commit.** One line above the `const`, naming
-   which construct the builder cannot express (`SYSDATE` in `VALUES`, `WITH`, an optimizer
-   hint). It costs seconds while the reason is in your head, and it converts a review
+2. **Write the SECURITY annotation now, in the same commit.** go-bricks requires
+   `// SECURITY: Manual SQL review completed - <what was verified>` on the line above every
+   `f.Raw`, `jf.Raw`, `database.Raw`, `SetExpr`, string `Having(...)`, `qb.Expr`/`qb.MustExpr`
+   and `RawExpression{}` call site — naming the construct the builder cannot express (`WITH`,
+   an optimizer hint) and the property checked (value-side parameterization, no user-input
+   concatenation). It costs seconds while the reason is in your head, and it converts a review
    finding into a justified exception. Reconstructing it later costs a review round trip
 
 
@@ -1242,18 +1587,15 @@ it to the PR:
 
 ### 2. When a query CANNOT use the builder (keep it raw — parameterized, and documented)
 
-- **`RawExpression` splices inline only in SELECT / GROUP BY / ORDER BY.** In `INSERT VALUES` and
-  `UPDATE SET` it is bound as a parameter instead, which is why a DB-side function placed there
-  becomes a broken bind rather than inline SQL. That is what makes the holdout list in rule 7 above
-  a **closed** list: an Oracle sequence or function in `VALUES`/`SET` (`SEQ.NEXTVAL`, `SYSDATE`),
-  `NVL()` / `||` (or any function) directly inside a `SET` target, and a correlated scalar subquery
-  inside `SET`.
-- **Before writing one of those off as raw, check `SetExpr` for the `UPDATE SET` case.** go-bricks
-  declares `SetExpr(column string, expr RawExpression, args ...any)` on the update builder, and its
-  own doc shows it carrying bound arguments —
-  `SetExpr("lease_until", qb.MustExpr("NOW() + (? * INTERVAL '1 second')"), secs)`. Whether that
-  actually splices the expression or binds it **must be confirmed with `ToSQL()` for your vendor**;
-  do not assume either way. If it splices, that statement leaves the holdout list. Likewise prefer
+- **A DB-side function in `INSERT VALUES` / `UPDATE SET` is NOT raw SQL — use `qb.Expr`.** go-bricks
+  splices a `RawExpression` verbatim into the value positions (`Set`, `SetMap`, `SetExpr`, `Values`,
+  `BuildUpsert`) with no placeholder and no arg, so `SEQ.NEXTVAL`, `SYSDATE`, `NVL()` / `||` in a
+  `SET` target and a correlated scalar subquery in `SET` all go through the builder:
+  `Values(id, qb.Expr("SYSDATE"), name)` → `VALUES (:1,SYSDATE,:2)`. Confirm with `ToSQL()` for your
+  vendor. The `f.*` WHERE doors refuse an expression (`ErrExpressionInFilter`) — a WHERE-side
+  expression uses `f.Raw`. Every `qb.Expr` / `SetExpr` call site carries the SECURITY annotation.
+  For an expression with bound args on UPDATE use
+  `SetExpr("lease_until", qb.MustExpr("NOW() + (? * INTERVAL '1 second')"), secs)`. Prefer
   the vendor-aware `BuildCurrentTimestamp()` / `BuildUUIDGeneration()` over a hardcoded `SYSDATE`
   wherever the value — not the expression — is what you need.
 - **Joins, subqueries, grouping, paging and locking are all expressible** — `InnerJoinOn` /
@@ -1263,7 +1605,8 @@ it to the PR:
   `Insert(...).Select(...)`, and `Prefix` / `Suffix` for `RETURNING` / `ON CONFLICT`. None of these
   justifies raw SQL.
 - **The genuinely absent constructs — the accepted reasons to keep a `const` raw — are `UNION`,
-  `WITH` / CTE, and vendor optimizer hints** (verified against go-bricks v0.63.0). Stored
+  `WITH` / CTE, and vendor optimizer hints** (re-derive against your pinned go-bricks with the
+  script below). Stored
   procedures are also absent, but they are banned outright by review check 1d: a proc is a separate
   blocker, never a justification.
 - **Re-derive the list instead of trusting this one** — the builder grows every release:
@@ -1279,27 +1622,27 @@ it to the PR:
   reasons — the last one especially: today's internal caller is tomorrow's endpoint parameter.
   A construct not in that list and not demonstrated by `ToSQL()` means the builder can express it,
   so use it.
-- **Every raw statement carries its one-line WHY**, and the phase's PR body repeats the list of raw
+- **Every raw statement carries its `// SECURITY: Manual SQL review completed - <what was
+  verified>` annotation** on the line above, and the phase's PR body repeats the list of raw
   queries with their reason. That is what the reviewer reads instead of re-deriving it (review
   check 18b), and what the rawQuery audit table of a future `scan` will consume.
 
-### 3. Centralize the exec/error boilerplate — shared `Execute*` helpers
+### 3. Centralize the exec/error boilerplate — go-bricks `database.Execute*` helpers
 
-Every repo repeats the same `getDB → Query → rows.Next/Scan/rows.Err → wrap` and
-`Exec → RowsAffected → wrap` flow. Extract it once into a module-agnostic
-`internal/plataform/repository/executor.go`:
+Every repo repeats the same `ToSQL → Query/Exec → Scan/RowsAffected → wrap` flow. go-bricks
+already ships it — do **not** write a local `executor.go`:
 
-- `ExecuteQuerySingle(ctx, exec, query, opName, notFoundErr, dest...) error` — SELECT ≤1 row; no row
-  → `notFoundErr`; build/exec/scan/iter failures → `AppError(500)` labeled with `opName`.
-- `ExecuteUpdate(ctx, exec, query, opName, notFoundErr) (int64, error)` — 0 rows affected →
-  `notFoundErr`.
-- `ExecuteInsert(ctx, exec, query, opName) error`.
-- `Executor` interface `{ Query; Exec }` is satisfied by BOTH the plain connection and `dbtypes.Tx`
-  → the same helper runs inside or outside a transaction (`var _ Executor = (dbtypes.Tx)(nil)`).
-- `RawQuery{SQL, Args}` implements `ToSQL()` → keep-raw queries (UNION, `FOR UPDATE`) reuse the same
-  helpers, so even non-migratable SQL gets the centralized error handling.
-- The **caller passes the domain not-found error** so business codes reach the handler; infra is
-  wrapped 500 with an `opName` for diagnostics.
+- `database.ExecuteQuerySingle(ctx, exec, q, op, dest...)` / `ExecuteQueryMany(ctx, exec, q, op,
+  scan)` / `ExecuteUpdate(ctx, exec, q, op) (int64, error)` (any count, 0 included, is not an
+  error) / `ExecuteUpdateOne(ctx, exec, q, op)` (0 rows → `ErrNoRows`, >1 → `*ExecError`) /
+  `ExecuteInsert(ctx, exec, q, op)`.
+- `database.Executor` (`Query`/`Exec`) is satisfied by both `database.Interface` and `database.Tx`
+  → the same call runs inside or outside a transaction.
+- `database.Raw(sql, args...)` adapts keep-raw SQL (UNION, CTE, hints) to the same helpers; it
+  needs the SECURITY annotation like any other raw site.
+- Errors: zero rows → wrapped `database.ErrNoRows`; infra failures → `*database.ExecError{Op,
+  Stage, Err}`. The **repository maps `database.IsNotFound(err)` to the domain not-found error** so
+  business codes reach the handler; everything else is wrapped as infra (500) with the `op` label.
 
 ### 4. Correctness details
 
@@ -1508,18 +1851,18 @@ ticket: "CEB-XXXX"
 
 ---
 
-## STEP 2 — Execute Phase by Phase (SEQUENTIAL)
+## STEP 2 — Execute Phase by Phase (stacked by default, serial when it must be)
 
 ### CRITICAL: one concern per phase — and never move on without a signal
 
 ```
-Phase 1 → PR → merge to main → user confirms ✓
+Phase 1 → PR (base: main)              → submitted (stacked) / merged (serial) ✓
                                      ↓
-Phase 2 → PR → merge to main → user confirms ✓
+Phase 2 → PR (base: phase 1 | main)    → submitted (stacked) / merged (serial) ✓
                                      ↓
   ...repeat for each phase...
                                      ↓
-Phase N (docs) → PR → merge to main → done ✓
+Phase N (docs) → PR → stack merged / merged to main → done ✓
 ```
 
 The number of phases varies per endpoint (3 to 7+). Two things never change:
@@ -1527,8 +1870,8 @@ The number of phases varies per endpoint (3 to 7+). Two things never change:
 1. **One concern per phase**, within the ≤400 prod lines / ≤10 files caps.
 2. **Never start the next phase on your own initiative.** The signal you wait for depends on
    the mode chosen at STEP 1 — see "Phase sequencing" below:
-   - **Serial** — the signal is the user confirming the previous phase **merged to main**.
-     The diagram above is this mode
+   - **Serial** — the signal is the user confirming the previous phase **merged to main**;
+     each phase branches from `main`
    - **Stacked** — the signal is the previous phase's PR being **submitted** (`gh stack
      submit`) and the user agreeing to continue. The phase is still open in review; you build
      on its branch, not on `main`
@@ -1683,7 +2026,9 @@ Before writing the first line of code in any phase, validate ALL applicable item
 │ — REPOSITORY PHASE —           │        │                       │
 │ database.Interface used        │ ✅/N/A │ never inject raw DB   │
 │ getDB func pattern             │ ✅/N/A │ func(ctx) (db, err)   │
-│ Named placeholders (:param)    │ ✅/N/A │ Oracle = :name        │
+│ Positional placeholders        │ ✅/N/A │ Oracle :1..n, PG $N   │
+│ Raw/Expr sites annotated       │ ✅/N/A │ // SECURITY: Manual…  │
+│ database.Execute* helpers      │ ✅/N/A │ IsNotFound → domain   │
 │ fixtures.NewMockRows for tests │ ✅/N/A │ not custom mock rows  │
 │ mocks.MockDatabase for tests   │ ✅/N/A │ &mocks.MockDatabase{} │
 │ mocks.MockTx if transactional  │ ✅/N/A │ from go-bricks/testing│
@@ -1708,6 +2053,8 @@ Before writing the first line of code in any phase, validate ALL applicable item
 │ Existing helpers reused        │ ✅/N/A │ cardutils, external/* │
 │ No duplicate of existing code  │ ✅/N/A │ extend before add     │
 │ Config in both yml + yaml      │ ✅/N/A │ env vars + local vals │
+│ New PAN/CVV/expiry/token fields│ ✅/N/A │ log.sensitivefields or│
+│   masked in logs               │        │ RedactedForLog()      │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1746,6 +2093,21 @@ Before writing the first line of code in any phase, validate ALL applicable item
 2. Run test command from context (`make check`, etc.) — 0 issues. Must satisfy the NovoPayment Go
    quality gates: **staticcheck · go vet · gosec · gocyclo · ineffassign · `go test -cover`**.
 3. Verify coverage — NKH1 **floor 70%** on changed code, **goal 85%**; keep per-package ~85%.
+3b. **USE-CASE TEST GATE (MANDATORY)** — every unit created or changed in this phase has its
+   use-case test (see "Every created unit ships with its use-case test"). Mechanical check first,
+   then the matrix:
+   ```bash
+   go test -coverprofile=/tmp/phase.cover ./internal/modules/{module}/... >/dev/null
+   CHANGED=$(git diff --name-only "$BASE"...HEAD -- '*.go' ':(exclude)*_test.go')
+   go tool cover -func=/tmp/phase.cover | grep -F "$CHANGED" | awk '$NF=="0.0%"'   # any line = a unit with NO test
+   ```
+   Any `0.0%` function in a changed file → write its test now (or justify it as exempt in one
+   line: DTO / constant / generated / wiring). Then print the **use-case coverage matrix**:
+
+   | Unit (file:func) | Test(s) | EST-NN / scenario | Observable outcome asserted |
+   |---|---|---|---|
+
+   A unit with no row fails closed, same as a BLOCKER: do not proceed to the self-review gate.
 4. Bump version in versioning file
 5. `grep -rn` for source-language references — 0 matches
 6. `grep -rn "log.Printf\|fmt.Println"` — 0 debug logs
@@ -1769,10 +2131,13 @@ Before writing the first line of code in any phase, validate ALL applicable item
    s ERR-SWALLOWED    '_ = .*[Ee]rr|fmt\.Errorf\([^)]*%v[^)]*err'
    s IDIOM-BLOCKER    'panic\(|os\.Exit|log\.Fatal|^func init\(\)'
    s TIME-AS-INT      '(Timeout|TTL|Interval|Delay|ExpiresIn) +(int|int64|string)'
+   s RAW-NO-SECURITY  'f\.Raw\(|jf\.Raw\(|database\.Raw\(|SetExpr\(|Having\(|MustExpr\(|[.]Expr\(|RawExpression\{'
    cat $OUT
    ```
    Every hit is **opened and read** before it is dismissed — the sweep locates, it never
-   concludes. A legitimate hit gets a one-line justification in the PR body so the reviewer
+   concludes. Each `RAW-NO-SECURITY` hit must carry
+   `// SECURITY: Manual SQL review completed - <what was verified>` on the line above it; a hit
+   without it is fixed in this phase. A legitimate hit gets a one-line justification in the PR body so the reviewer
    does not re-litigate it (review check 18b honors prior justifications; an unexplained
    escape hatch gets flagged again).
 
@@ -1875,7 +2240,7 @@ the mapping stays traceable instead of duplicated.
 | 4 | **Reuse the shared reader before writing a repository** (Rule 0 below). Extend the shared query and DTO when a column is missing | A parallel stack — Row, scanColumns, mapper, DTO, interface — all of it well-built and all of it duplicate | 8a |
 | 5 | **Use the shared module bootstrap.** Do not copy another module's `Init` block | Six identical error strings; the module that skips it loses telemetry silently | 20c |
 | 6 | **Bus contract names come from the counterpart, copy-pasted, never retyped.** Exchange, queue, routing key and `EventType` must match the other side character for character | Publishes fine, routes nowhere, no error anywhere. The most expensive defect this repo can ship | 6b |
-| 7 | **QueryBuilder, always — raw SQL only when the builder truly cannot express it.** `fmt.Sprintf` into SQL is a blocker, not a shortcut, even for a one-off admin query. `RawExpression` (`qb.Expr`/`MustExpr`) only splices inline in SELECT/GROUP BY/ORDER BY — in INSERT VALUES / UPDATE SET it is bound as a parameter instead, so the **only** legitimate raw-SQL holdouts are: an Oracle sequence/function in VALUES or SET (`SEQ.NEXTVAL`, `SYSDATE`), `NVL()`/`\|\|` (or any function) directly inside a SET target, and a correlated scalar subquery inside SET (no clean builder form outside a SELECT projection). Every other statement — a plain SELECT/INSERT/UPDATE with only bound values, even a `ROWNUM = 1` guard (`f.Raw("ROWNUM = 1")`) — goes through `qb.Select/Insert/Update`. Document each holdout inline with the specific construct forcing it, not a blanket "stays raw" comment over the whole file | Security finding on a merged branch, or a phase later needing to retrofit builder calls one query at a time | 1b, 4b |
+| 7 | **QueryBuilder, always — raw SQL only when the builder truly cannot express it.** `fmt.Sprintf` into SQL is a blocker, not a shortcut, even for a one-off admin query. `RawExpression` (`qb.Expr`/`MustExpr`) is spliced inline in INSERT VALUES / UPDATE SET (`Set`/`SetMap`/`SetExpr`/`Values`/`BuildUpsert`), so `SEQ.NEXTVAL`, `SYSDATE`, `NVL()`/`\|\|` in a SET target and a correlated scalar subquery in SET all go through `qb.Insert/Update` with `qb.Expr` (confirm with `ToSQL()`). The **only** legitimate raw-SQL holdouts (`database.Raw`) are `UNION`, `WITH`/CTE and optimizer hints. Every other statement — even a `ROWNUM = 1` guard (`f.Raw("ROWNUM = 1")`) — goes through `qb.Select/Insert/Update`. Every `f.Raw`/`jf.Raw`/`database.Raw`/`SetExpr`/string `Having`/`qb.Expr`/`MustExpr`/`RawExpression{}` site carries `// SECURITY: Manual SQL review completed - <what was verified>` on the line above, not a blanket "stays raw" comment over the whole file | Security finding on a merged branch, or a phase later needing to retrofit builder calls one query at a time | 1b, 4b |
 
 ### Design decisions taken once, at STEP 0 — not discovered in review
 
@@ -1973,6 +2338,34 @@ In `verify-parity`, a Go consolidation of repeated source checks is **🟢 mejor
 divergence) — *as long as* the firing order and resulting code/message match. If the consolidation
 changes WHICH error wins or its precedence, that IS a 🔴 divergence.
 
+### Every created unit ships with its use-case test (NON-NEGOTIABLE)
+
+Everything this skill creates or changes — handler, service method, repository method, mapper,
+validator, helper with logic — **must have a unit test of its use case, in the same phase and the
+same PR**. Never "tests in the next phase", never "covered indirectly by a bigger test".
+
+- **Use-case test, not coverage padding.** Each test pins a business scenario and asserts the
+  **observable outcome**: the rc/HTTP returned, the rows written or not, the external call made or
+  not, the error that wins. A test that only executes lines fails review check 15.
+- **Named after the scenario, traceable to the use-case list.** When `/migrate usecases` has
+  produced the `EST-NN` list (or `plan-data.yaml` has the approved cases), name the test after it:
+  `TestService_Foo_EST03_PanNotRegistered`. The case ids are the same ones QA certifies, so a test
+  that matches no case is either a missing case in the list or noise.
+- **Every branch that changes the response is a case:** each business error code, each validation
+  precedence, success variants, the repository/DB error and the not-found path. Money-path
+  decisions are tested branch by branch.
+- **Written with the code, in the same phase.** Test-first is welcome. A phase with production code
+  and no test for it has not ended.
+- **Exempt (no logic to validate):** plain DTO/struct declarations, constants, generated code and
+  module wiring (`module.go` route registration is covered by the handler test that hits the route).
+  Anything with a branch, a computation or a side effect is NOT exempt.
+- **Tests exercise the real unit with mocks at its boundary** (go-bricks `mocks.MockDatabase`,
+  `fixtures.NewMockRows`, mocked repo/service), per "Testing Patterns" below.
+
+**Gate (checked at Phase END, step 3b):** build the use-case coverage matrix — one row per unit
+created or changed in this phase, with its test(s) and `EST-NN`. A unit without a row, or a
+`0.0%` function in a changed file, fails closed: write the test before the phase ends.
+
 ### Code Quality
 
 | Rule | Details |
@@ -1980,7 +2373,7 @@ changes WHICH error wins or its precedence, that IS a 🔴 divergence.
 | **No source-language refs in comments** | Never mention Java, Jackson, Spring, etc. Check: `grep -rn "Java\|Jackson\|parity\|Spring"` |
 | **Max 7 params** | Group into struct |
 | **Complexity ≤ 15** | Extract helpers |
-| **Comments: WHY not WHAT** | Short + explicit; ≤100 chars/line default, exceed only when necessary, hard cap 150 |
+| **Comments: short, clear, WHY not WHAT** | No lengthy comments — one or two concise lines explaining the *why*. **≤100 chars per line, no exceptions.** If it needs a paragraph, the code or the name is the problem: rename/extract instead. No narrating the code, no history, no ticket stories |
 | **Extend before add** | Same table → extend existing method |
 | **Constants stay local** | Unexported if single-package use |
 
@@ -1990,10 +2383,38 @@ changes WHICH error wins or its precedence, that IS a 🔴 divergence.
 |------|---------|
 | **getDB func pattern** | Never inject raw DB |
 | **SQL in queries.go** | Never inline SQL |
-| **Named placeholders** | `:param` Oracle, `$N` PostgreSQL |
+| **Positional placeholders** | builder generates `:1..n` Oracle, `$N` PostgreSQL; `database.Raw(sql, args...)` takes positional args |
 | **External clients in shared pkg** | Not in service/ |
 | **Filtering in SQL** | Never in-memory |
 | **Config in both files** | Env placeholders + local values |
+
+### Security
+
+| Rule | Details |
+|------|---------|
+| **New PAN/CVV/expiry/cardToken fields masked in logs** | Add the field names to `log.sensitivefields` (YAML, additive to the defaults — bare `pan`/`card` are not default needles) or implement `RedactedForLog() any` (`logger.Redactor`, ADR-110, value receiver) on the DTO |
+| **Never log the decrypted request** | Do not pass the decrypted request/DTO to `logger.Interface`/`WithFields` unless it implements `logger.Redactor` |
+| **`LoggerFilterConfig` in code** | `app.Options.LoggerFilterConfig` replaces the whole config — start from `logger.DefaultFilterConfig()` and append, never a bare struct literal |
+| **Raw SQL annotation** | `// SECURITY: Manual SQL review completed - <what was verified>` above every raw/Expr site (see "When a query CANNOT use the builder") |
+
+### Tenant Config Sections
+
+Before adding a new `mapstructure:"<name>"` section to a module's own tenant-config struct
+(`tenantCustom` or equivalent), check whether **another module already declares a top-level
+section with that same name** (e.g. `params`, `processing`). If one does, the unexpanded-`${VAR}`
+placeholder warning each module emits at startup can start reporting the OTHER module's own
+switches as if they were yours.
+
+Why: that warning filters by section NAME at the section's own nesting level, not by which module
+owns a leaf underneath it. Two modules both declaring `params` means either one's warning walks
+the WHOLE `params.*` subtree, sibling module's business switches included.
+
+Fix: exclude the sibling's subtree explicitly (e.g. a shared `UnexpandedKeysExcept(custom,
+skip...)` helper next to whatever draws `UnexpandedKeysFor`) BEFORE the new section ships — not
+after a reviewer catches the noise in a real PR. Caught on an embossCard migration (CEB-5935,
+2026-09-30): adding `params.emboss` to `cards`' own tenant config made its startup warning list
+`accounts`' `params.card`/`params.account`/`params.customer` switches too, since both modules
+declare `params`.
 
 ### Date Handling
 
@@ -2018,14 +2439,23 @@ changes WHICH error wins or its precedence, that IS a 🔴 divergence.
 ### Compensation Pattern
 
 When external call succeeds but DB write fails:
-1. Best-effort compensation call to reverse
+1. Best-effort compensation call to reverse — on `context.WithoutCancel(ctx)` (keeps trace/tenant
+   values; the request ctx is already cancelled if the failure was a timeout), never
+   `context.Background()`
 2. Log attempt
 3. Return original error
 4. Test both: compensation succeeds + fails
 
+If the side effect is **publishing an event** (not an HTTP call), don't compensate: write it with
+the go-bricks outbox in the same DB transaction (`outbox.Publish(ctx, tx, …)` before `tx.Commit`).
+
 ---
 
 ## Testing Patterns
+
+> **Rule:** every unit created or changed has a use-case test in the same phase (see
+> "Every created unit ships with its use-case test"). The coverage tables below say *which cases*
+> each layer needs; the Phase END gate (3b) proves that none was skipped.
 
 ### File structure
 
@@ -2087,12 +2517,18 @@ Cover: success, each business error code → HTTP status, service 500, service 5
 ### Plain body
 
 ```go
-func (m *Handler) Foo(req *service.FooRequest, ctx server.HandlerContext) (interface{}, server.IAPIError) {
-    resp, appErr := m.Service.Foo(ctx.Echo.Request().Context(), req)
-    if apiErr := m.ValidateError(appErr); apiErr != nil { return nil, apiErr }
+func (m *Handler) Foo(req *service.FooRequest, ctx server.HandlerContext) (server.Result[*service.FooResponse], server.IAPIError) {
+    resp, appErr := m.Service.Foo(ctx.RequestContext(), req)
+    if apiErr := m.ValidateError(appErr); apiErr != nil { return server.Result[*service.FooResponse]{}, apiErr }
     return server.NewResult(HTTPStatusFromRC(resp.Rc), resp), nil
 }
 ```
+- `ctx.Echo` no longer exists (ADR-034 — no `echo.*` on the consumer surface): use
+  `ctx.RequestContext()` / `ctx.Request()`.
+- The legacy contract has no `data`/`meta` envelope → register the route with
+  `server.WithRawResponse()` (Raw Response Mode, go-bricks `wiki/handler_patterns.md`) so the
+  handler's `R` is serialized as-is. `server.ResultWithMeta[R]` is only for adding entries to the
+  enveloped `meta` map (it is dropped in raw mode).
 
 ### Encrypted body (pure module)
 
@@ -2204,9 +2640,6 @@ A title over 72 chars (e.g. ~120) is a nit, not a blocker — but trim scope wor
 
 **Body:**
 
-## Jira
-[{TICKET}](https://{ticket_host}/browse/{TICKET})
-
 ## Summary
 - Bullet 1
 - Bump version X → Y
@@ -2246,7 +2679,7 @@ Generated with [Claude Code](https://claude.com/claude-code)
 | Retype a bus exchange/queue/routing key | Copy-paste from the counterpart (review 6b) |
 | Hand-copy a sibling flow | Parameterize a descriptor (review 20a) |
 | `fmt.Sprintf` into SQL "just this once" | QueryBuilder — it is a blocker (review 1b) |
-| "this statement stays raw" as a blanket comment over a whole query file | Convert every query that has no NEXTVAL/SYSDATE/NVL/\|\|/correlated-subquery in VALUES or SET; document only the true holdouts, one by one |
+| "this statement stays raw" as a blanket comment over a whole query file | Convert every query that is not UNION/CTE/hint (NEXTVAL/SYSDATE/NVL/\|\|/correlated subquery in VALUES or SET use `qb.Expr`); annotate each remaining raw/Expr site with its own `// SECURITY: Manual SQL review completed - …` line |
 | Open the PR with a known blocker | Fail closed: fix it in the phase (self-review gate) |
 | Start the next phase because the previous "looks done" | Wait for the mode's signal: merge (serial) or submitted PR + user go-ahead (stacked) |
 | Report a stacked phase as `merged` when it is only submitted | `en review` until the stack actually lands |
@@ -2264,3 +2697,13 @@ Generated with [Claude Code](https://claude.com/claude-code)
 | A cross-module read that publishes to the bus or writes the outbox | Reads have no side effects, or every consumer becomes a producer |
 | An internal HTTP endpoint to serve a sibling module | In-process interface injection — same binary, no network |
 | Register the consumer before the provider in `main.go` | Provider first, or the dependency is `nil` at runtime and no linter catches it |
+
+---
+
+## Completion checklist (MANDATORY — print before finishing)
+
+Before reporting done, print every step this skill marks MANDATORY/required/always, each with
+its **evidence** (command run, file written, answer the user gave). A step with no evidence
+is shown as `❌ NO EJECUTADO` — never omitted, never `✅`. Judging a step "redundant for this
+case" is the user's call: ask, do not drop it silently. Approving a plan is not approving
+anything that gets published or committed — those need the exact text/diff approved.

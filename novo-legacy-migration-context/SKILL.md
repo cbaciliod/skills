@@ -4,13 +4,19 @@ description: "Initializes or updates the migration context for a legacy-to-Go pr
 license: MIT
 metadata:
   author: galopez-shark
-  version: "3.2.0"
+  version: "3.3.0"
   domain: migration
   triggers: migration-context, init-migration, novo-context, migration context, inicializar migracion, migration-context ticket
   role: specialist
   scope: configuration
   output-format: config
   related-skills: novo-legacy-migration-endpoint, golang-pro
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: 'bash "${CLAUDE_SKILL_DIR:-$HOME/.claude/skills/novo-legacy-migration-context}/hooks/pr-publish-guard.sh"'
 ---
 
 # Migration Context Initialization
@@ -305,6 +311,15 @@ For EACH source repo, read ALL handler/controller files listed in `source_repos[
 - Brief description (from method name or annotations)
 - Whether the endpoint uses encryption (JWE)
 - External services it calls
+- **Timeout** the legacy applies to each external call (connect/read, from code or properties).
+  go-bricks' default request deadline is **5s** (`server.timeout.middleware`): a Java timeout
+  above it → flag `parity_risk` (the Go handler would cut the call earlier)
+- **Date/time in SQL**: `SYSDATE` / `SYSTIMESTAMP` / local-time comparisons. go-bricks DB sessions
+  run in **UTC** by default (ADR-016) → flag where the legacy relied on server-local time
+- **Output effect**: `http` (synchronous call → needs compensation/reversal on failure) vs
+  `event` (message/queue → transactional outbox) vs `none`
+- **PCI-sensitive fields** in request/response/logs (PAN, CVV2, expiration, cardToken) — the
+  endpoint skill registers them in `log.sensitivefields` / `RedactedForLog`. Field names only, never values
 
 Present the discovered endpoints grouped by module:
 
@@ -410,23 +425,26 @@ Present the summary:
 ├──────────────────────────────────────────────────────────────────┤
 │ Layer          │ go-bricks Component         │ Import Path       │
 │────────────────│─────────────────────────────│───────────────────│
-│ HTTP Server    │ server.Echo                 │ go-bricks/server  │
+│ HTTP Routes    │ server.GET/POST(registry,…) │ go-bricks/server  │
 │ Route Binding  │ server.HandlerContext       │ go-bricks/server  │
-│ Request Valid. │ validate:"required" tags    │ Echo validator     │
-│ DB Access      │ database.Interface          │ go-bricks/db      │
-│ DB Transactions│ db.Begin / tx.Commit        │ go-bricks/db      │
-│ HTTP Client    │ httpclient.Client           │ go-bricks/http    │
-│ JWE Encryption │ cryptoutil.DecryptJWE       │ go-bricks/crypto  │
+│ Request Valid. │ validate:"required" tags    │ go-bricks/server  │
+│ DB Access      │ database.Interface          │ go-bricks/database│
+│ DB Transactions│ db.Begin(ctx) / tx.Commit   │ go-bricks/database│
+│ HTTP Client    │ httpclient.Client           │ go-bricks/httpclient│
+│ JWE/JWS        │ jose:"…" struct tag         │ go-bricks/jose    │
 │ Logging        │ logger.Logger (zerolog)     │ go-bricks/logger  │
 │ Config Inject  │ deps.Config.InjectInto      │ go-bricks/config  │
 │ Module System  │ app.Module interface        │ go-bricks/app     │
 │ Error Response │ server.IAPIError            │ go-bricks/server  │
-│ Test Fixtures  │ fixtures.NewMockRows        │ go-bricks/testing │
-│ Test DB Mocks  │ mocks.MockDatabase          │ go-bricks/testing │
-│ Test Tx Mocks  │ mocks.MockTx               │ go-bricks/testing │
+│ Test Fixtures  │ fixtures.NewMockRows        │ go-bricks/testing/fixtures│
+│ Test DB Mocks  │ mocks.MockDatabase          │ go-bricks/testing/mocks│
+│ Test Tx Mocks  │ mocks.MockTx                │ go-bricks/testing/mocks│
 └──────────────────────────────────────────────────────────────────┘
 
 Rule: If go-bricks provides it, USE IT. Never reinvent.
+No `echo.*` type on the consumer surface (ADR-034) — never map to Echo directly.
+`cryptoutil.*` is NOT go-bricks: if the target/welcome project has it, record it
+as a project helper (`target.structure`), not in this mapping.
 ```
 
 Save this mapping in the context file so every endpoint migration references it.
@@ -473,7 +491,7 @@ Present the FULL context summary (including endpoint inventory):
 ├──────────────────────────────────────────────────┤
 │ go-bricks: v{version} (MANDATORY framework)      │
 ├──────────────────────────────────────────────────┤
-│ Target: ./my-go-service (go-bricks v0.30.0)      │
+│ Target: ./my-go-service (go-bricks {latest})     │
 │   Modules: internal/modules/{name}/              │
 │   Tests: make check | Branch: feature/{t}-{p}    │
 │   Version: config.yml → app.version              │
@@ -573,16 +591,16 @@ external_services:
 target:
   repo: "./my-go-service"
   framework: "go-bricks"
-  framework_version: "v0.30.0"
+  framework_version: "{latest}"  # derive, never hardcode: basename of $(ls -d "$(go env GOMODCACHE)"/github.com/gaborage/go-bricks@* | sort -V | tail -1), or the target go.mod
   framework_rule: "MANDATORY — if go-bricks provides it, use it. Never reinvent."
   reference_repo: "https://github.com/novopayment/mdw-welcome-project-go"  # canonical go-bricks + architecture reference
   gobricks_mapping:
-    http_server: "server.Echo"
+    http_routes: "server.GET/POST(handlerRegistry, r, path, h)"  # no echo.* on the surface (ADR-034)
     route_binding: "server.HandlerContext"
     db_access: "database.Interface"
-    db_transactions: "db.Begin / tx.Commit / mocks.MockTx"
+    db_transactions: "db.Begin(ctx) / tx.Commit / mocks.MockTx"
     http_client: "httpclient.Client"
-    jwe_encryption: "cryptoutil.DecryptJWE / cryptoutil.EncryptJWE"
+    jwe_encryption: "jose:\"…\" struct tag (go-bricks/jose) — cryptoutil.* only if a project helper"
     logging: "logger.Logger (zerolog)"
     config_inject: "deps.Config.InjectInto"
     module_system: "app.Module interface"
@@ -645,6 +663,11 @@ endpoint_inventory:
     description: "Cancel card"
     encryption: "request_response"
     external_calls: ["card_issuer"]
+    # Optional (omit when unknown) — consumed by novo-legacy-migration-endpoint
+    external_timeouts: {card_issuer: "30s"}  # legacy value; > 5s request deadline → parity risk
+    sysdate_usage: false     # true if SQL compares with SYSDATE/local time (go-bricks session = UTC, ADR-016)
+    output_effect: "http"    # http (compensation) | event (outbox) | none
+    sensitive_fields: ["cardNumber", "cvv2", "expirationDate", "cardToken"]  # names only → log.sensitivefields / RedactedForLog
     complexity: 4  # medium
     status: "not_started"
     go_module: "cards"  # target module in Go
@@ -660,6 +683,10 @@ checklist_per_endpoint:
   - "Read ALL properties files for error codes and messages"
   - "Check if endpoint uses encryption (JWE)"
   - "Check if endpoint calls external services"
+  - "Record external call timeouts (>5s go-bricks request deadline = parity risk)"
+  - "Flag SYSDATE/local-time comparisons (go-bricks DB session is UTC)"
+  - "Classify output effect: http (compensation) vs event (outbox)"
+  - "List PCI-sensitive field names (PAN, CVV2, expiration, cardToken)"
   - "Identify ALL error codes returned (they are IMMUTABLE)"
   - "Check go-bricks for reusable types BEFORE writing any code"
 ```
@@ -995,7 +1022,7 @@ subtasks:
 
 The generated MD MUST follow this exact structure (in Spanish — Jira audience is Spanish-speaking):
 
-````markdown
+```markdown
 # Migración: {endpoint_name}
 
 **Epic:** CEB-5392 (Migración Zinli Java → Golang)
@@ -1104,12 +1131,12 @@ internal/modules/{module}/
 - [ ] {Criterio específico del endpoint — estados de tarjeta, montos, etc.}
 - [ ] {Criterio sobre servicios externos}
 - [ ] {Criterio sobre estado en Oracle tras éxito/rechazo}
-- [ ] `make check` limpio; cobertura ≥ 85%
+- [ ] `make check` limpio; cobertura ≥ 70% (meta 85%)
 
 ## Definition of Done
 
 - [ ] PR revisado y aprobado por fase
-- [ ] `make check` limpio (0 lint issues, 0 race conditions, cobertura ≥ 85%)
+- [ ] `make check` limpio (0 lint issues, 0 race conditions, cobertura ≥ 70%, meta 85%)
 - [ ] Códigos de error verificados contra `RESPONSE_CODES.properties` de Java
 - [ ] Sin duplicación de lógica ya existente
 - [ ] go-bricks utilizado en cada capa (no reinventar)
@@ -1121,7 +1148,7 @@ internal/modules/{module}/
 - {Constantes nuevas a agregar}
 - {Comportamientos fuera de scope}
 - {Advertencias o puntos a confirmar ⚠️}
-````
+```
 
 ### Rules for ticket generation
 
@@ -1150,3 +1177,13 @@ internal/modules/{module}/
 - **Preserve existing entries on re-invoke** — only add/update, never remove unless asked
 - **go-bricks is MANDATORY** — every migration must use go-bricks patterns; the mapping section is required
 - **Endpoint inventory must be complete** — every endpoint in the source must be listed, even if not yet planned for migration
+
+---
+
+## Completion checklist (MANDATORY — print before finishing)
+
+Before reporting done, print every step this skill marks MANDATORY/required/always, each with
+its **evidence** (command run, file written, answer the user gave). A step with no evidence
+is shown as `❌ NO EJECUTADO` — never omitted, never `✅`. Judging a step "redundant for this
+case" is the user's call: ask, do not drop it silently. Approving a plan is not approving
+anything that gets published or committed — those need the exact text/diff approved.

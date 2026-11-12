@@ -6,6 +6,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.0.0/) y el v
 
 ---
 
+## [1.3.0] - 2026-11-12
+
+### Added
+
+- feat(go-dev-technical): agregar skill v2.21.0 desde la base [galopez-shark/skills](https://github.com/galopez-shark/skills) — `review`, `scan` y `pr-fix`
+
+### Changed
+
+- chore(novo-legacy-migration-endpoint): sincronizar con la base galopez-shark/skills (v4.21.0) — nuevos subcomandos `migrate-ticket-plan` (`mtp`) y `migrate-doc-plan` (`mdp`, Plan de Desarrollo Word/PDF con plantilla en `assets/`)
+- chore(novo-legacy-migration-context): sincronizar con la base galopez-shark/skills (v3.3.0)
+- chore(skills-migracion): los tres skills incluyen el hook `pr-publish-guard.sh`, que pide confirmación antes de cualquier comando `gh` que publique en GitHub
+
+---
+
 ## [1.2.0] - 2026-09-30
 
 ### Added
