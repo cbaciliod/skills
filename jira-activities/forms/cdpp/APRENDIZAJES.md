@@ -26,7 +26,7 @@ aprobado por el Líder Técnico.
 
 ## PT-001 — Microservicio Emergente (K8s Rolling Update)
 
-**Validado por:** Gustavo Lopez — Líder Técnico Backend  
+**Validado por:** Líder Técnico Backend  
 **Fecha de validación:** 2026-06-19  
 **Ticket modelo:** [CDPP-35117](https://jira4novo.atlassian.net/browse/CDPP-35117)  
 **Subtareas modelo:** [CDPP-35124](https://jira4novo.atlassian.net/browse/CDPP-35124) (config), [CDPP-35132](https://jira4novo.atlassian.net/browse/CDPP-35132) (deploy)
@@ -74,8 +74,8 @@ CDPP-35117 (padre)
 - **Subtarea PASO 2 (deploy):** formato simple. Solo la tabla de despliegue con
   POD, APPSERVER, NOMBRE WAR (N/A para micros), job (N/A), y el link del run de
   GitHub Actions. Asignado al equipo de Infra Middleware (no al desarrollador).
-- **Assignee real del despliegue:** Guillermo Infante Martinez (Infra). El
-  desarrollador (cbacilio) es quien crea el CDPP y la subtarea de configuración.
+- **Assignee real del despliegue:** un integrante de Infra Middleware. El
+  desarrollador es quien crea el CDPP y la subtarea de configuración.
 - **Namespace:** confirmar siempre con el usuario — puede ser `uat-api-backend`,
   `prd-api-backend` u otro según el ambiente y el cliente.
 - **Variables OTEL:** el ConfigMap real incluye también las variables de

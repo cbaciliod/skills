@@ -51,8 +51,8 @@ la empresa.
    f) **Revisión Postproducción** — Checklist de validaciones post-despliegue.
 
    g) **Equipo de Soporte** — Nombres y roles
-      (Gustavo Lopez — Líder Técnico Backend; Alonzo Cumpa — Analista de Desarrollo,
-      salvo que se indique otra cosa).
+      (Líder Técnico Backend y Analista de Desarrollo; tomar los nombres del
+      usuario o del ticket de referencia, nunca inventarlos).
 
    h) **Documentación** — Enlace SharePoint del CDPP (placeholder si no se tiene).
 

@@ -447,7 +447,7 @@ Verificación post-rollback:
 - Confirmar que el equipo de QA está disponible para ejecutar la transacción E2E de validación.
 - Dependencia con ticket [CEB-6087](https://jira4novo.atlassian.net/browse/CEB-6087) —
   certificación en TEST debe estar confirmada antes del pase.
-- Responsable técnico: Gustavo Lopez (líder técnico) y Christian Bacilio De la Cruz
+- Responsable técnico: <Nombre> (líder técnico) y <Nombre>
   (analista de desarrollo), disponibles durante la ventana de ejecución.
 ```
 

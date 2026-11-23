@@ -48,5 +48,5 @@ también puede crear el ticket y sus subtareas directamente.
 
 ## Equipo de Soporte por defecto
 
-- Gustavo Lopez — Líder Técnico Backend
-- Alonzo Cumpa — Analista de Desarrollo
+- `<Nombre>` — Líder Técnico Backend
+- `<Nombre>` — Analista de Desarrollo
