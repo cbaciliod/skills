@@ -31,7 +31,13 @@ PR comment. It MUST render correctly in GitHub-Flavored Markdown (GFM):
 ```markdown
 ## Revisión PR #{number} — {title}
 
+**Modo**: {Migración | Build | Estándar} — {una línea con por qué}
+
 📋 **{count} archivos** | **+{prodLOC} prod / +{testLOC} test líneas** (gate ≤400 sobre prod) | **Riesgo**: {ALTO/MEDIO/BAJO} | **go-bricks**: v{version}
+
+{Si el Step 0.5c encontró conflictos, hilos sin resolver o CHANGES_REQUESTED, aquí va PRIMERO el bloque
+⛔ **BLOQUEANTE — el PR no puede mergearse todavía** exactamente como lo define el Step 0.5c; si no hay
+nada abierto, una línea `✅ Sin conflictos ni hilos abiertos`; si no se pudo leer, `⚠️ NO VERIFICADO`.}
 
 ### ❌ Bloqueadores
 
@@ -108,6 +114,18 @@ PR comment. It MUST render correctly in GitHub-Flavored Markdown (GFM):
 
 ---
 
+### 🎯 Spec — ¿entrega lo que se pidió? (check 23)
+
+Va **aparte** de los hallazgos de estándares; no se mezcla ni se reordena con ellos. Si no hay spec, escribir "sin spec disponible".
+
+| Tipo | Spec (cita) | Hallazgo |
+|------|-------------|----------|
+| Falta / parcial | `EST-04 …` | sin test ni código |
+| No pedido | — | endpoint extra en `module.go:30` |
+| Implementado mal | `rc 12 …` | el mensaje difiere del Java |
+
+---
+
 ### 📌 Para el próximo commit
 
 - {item 1 — forward-looking, no bloquea este PR}
@@ -126,6 +144,7 @@ PR comment. It MUST render correctly in GitHub-Flavored Markdown (GFM):
 | `golangci-lint run ./...` | ✅/❌/⚠️ | comparado contra `origin/main` |
 | `go test -race` | ✅/N/A | sólo si el diff toca concurrencia |
 | Modernización (`go fix -diff`) | ✅/❌/N/A | |
+| Mergeable contra la base (atraso / conflictos, Step 0.5b) | ✅/❌/⚠️ | commits de atraso; archivos en conflicto |
 | **go-bricks** | | |
 | Sin tipos reinventados | ✅/❌/⚠️ | |
 | rawQuery / SQL safety | ✅/❌/⚠️ | |
@@ -206,5 +225,7 @@ Tolerado a propósito (duplicación accidental, no misma razón de cambio): {lis
 
 </details>
 
-**Veredicto**: ✅ Aprobado / ⚠️ No verificado ({razón}) / ❌ {N} bloqueadores pendientes
+**Veredicto** (nunca ✅ con el bloque ⛔ presente; un `CHANGES_REQUESTED` nuestro ya atendido según 18c no cuenta como bloque): ✅ Aprobado / ⚠️ No verificado ({razón}) / ❌ {N} bloqueadores pendientes
+**Acción en GitHub**: {APPROVE | COMMENT | REQUEST_CHANGES} — {una línea con la razón; si cierra un CHANGES_REQUESTED nuestro anterior, dilo}
 ```
+

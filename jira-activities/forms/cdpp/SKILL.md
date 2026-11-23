@@ -130,9 +130,9 @@ manualmente.
 - Nunca inventar datos técnicos no provistos (rutas, versiones, esquemas,
   credenciales). Usar placeholder explícito `*(por definir)*`.
 - El ticket de certificación CEB va en el cuerpo del CDPP, nunca en el título.
-- Equipo de Soporte por defecto: **Gustavo Lopez — Líder Técnico Backend** y
-  **Alonzo Cumpa — Analista de Desarrollo**. Si el usuario indica otro equipo,
-  usar ese.
+- Equipo de Soporte: **Líder Técnico Backend** y **Analista de Desarrollo**.
+  Tomar los nombres del usuario o del ticket de referencia; si no hay, dejar
+  `*(por definir)*`.
 - Si "no genera indisponibilidad", reforzarlo en: Afectación, Consideraciones del
   Rollback, Análisis de Impacto del Anexo 1 y Plan de Retorno del Anexo 1.
 - Mantener coherencia total entre CDPP, Anexo 1 y Anexo 4: mismo cliente,

@@ -95,5 +95,5 @@ Verificación post-rollback:
 ## Dependencias y Coordinación
 
 - Certificación en TEST confirmada bajo ticket CEB-9999 antes del pase.
-- Responsable técnico: Gustavo Lopez (líder técnico) y Christian Bacilio De la Cruz
+- Responsable técnico: <Nombre> (líder técnico) y <Nombre>
   (analista de desarrollo), disponibles durante la ventana de ejecución.

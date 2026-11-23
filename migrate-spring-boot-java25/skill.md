@@ -1,3 +1,9 @@
+---
+name: migrate-spring-boot-java25
+description: >
+  Guía y ejecuta la migración de microservicios Java de NovoPayment desde Spring Boot 2.7.x / Java 11 hacia Spring Boot 3.5.x / Java 25 en 3 fases (upgrade + javax→jakarta, SpringFox→SpringDoc, OpenTelemetry). Activa este skill cuando el mensaje contenga (sin distinguir mayúsculas) palabras como: migrar spring boot, spring boot 3, java 25, javax jakarta, springdoc, springfox, opentelemetry, actualizar pom. Si la intención no es clara, pregunta ¿quieres migrar un microservicio a Spring Boot 3 / Java 25?
+---
+
 # Skill: Migración Spring Boot 3.x + Java 25
 
 ## Propósito

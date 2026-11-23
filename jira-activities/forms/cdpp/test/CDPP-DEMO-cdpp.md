@@ -88,8 +88,8 @@ En caso de que el pase no sea exitoso:
 
 ## Equipo de Soporte
 
-- Gustavo Lopez — Líder Técnico Backend
-- Christian Bacilio De la Cruz — Analista de Desarrollo
+- `<Nombre>` — Líder Técnico Backend
+- `<Nombre>` — Analista de Desarrollo
 
 ---
 

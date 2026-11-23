@@ -29,7 +29,7 @@ CDPP-XXXXX (padre — Requirement Pass)
 └── PASO 2: Desplegar microservicio
     Ejecución real del despliegue (GitHub Actions)
     → subtarea-deploy-template.md
-    Asignado: Infra Middleware (Guillermo Infante Martinez)
+    Asignado: Infra Middleware
 ```
 
 ---
@@ -73,5 +73,5 @@ CDPP-XXXXX (padre — Requirement Pass)
 - Incluir el bloque YAML completo del ConfigMap listo para aplicar.
 - El rollback de imagen siempre va acompañado del rollback del ConfigMap si hay variables nuevas.
 - `ENV_RABBIT_PASSWORD` y credenciales similares → `*(sensible — Secret K8s)*` en tablas.
-- PASO 2 lo ejecuta Infra (no el desarrollador) — asignarlo a Guillermo Infante Martinez o quien corresponda.
+- PASO 2 lo ejecuta Infra (no el desarrollador) — asignarlo a quien corresponda en Infra Middleware.
 - Confirmar el namespace con el usuario — no asumir `prd-api-backend`.
