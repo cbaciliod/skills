@@ -111,6 +111,51 @@ Los siguientes tipos son conocidos pero aún no tienen un ticket modelo validado
 
 ---
 
+## Lecciones — Base de Datos Oracle + Proceso Batch (BASE II MIO, nov-2026)
+
+Pase en 2 subtareas: PASO 1 BD (tabla de paso + recompilación del body) bloquea
+PASO 2 servidor del cargador (`.ctl` + `.sh`). Aún no es playbook validado.
+
+### Armado de los archivos del pase
+
+- Partir **siempre del vigente de producción** (pedirlo por CDSI a BD) y aplicar
+  **solo el delta**. Nunca subir a PRD el archivo de UAT: rutas, `ORACLE_SID`,
+  conexión (PRD usa `'/ as sysdba'`) y directorios Oracle difieren.
+- Guardar el vigente como rollback **antes** de editar (ej. `prd/data/`).
+- Comparar test / uat / prd con diff **lógico** (ignorando CRLF, espacios y
+  encabezado `ESQUEMA."OBJETO"`) y clasificar cada diferencia: *delta*,
+  *propio del ambiente* o *formato*. Ver skill `env-compare`.
+- Spec del package: si no cambia, **no se ejecuta**; decirlo en el CDPP.
+- Body PL/SQL: debe terminar en `/` + salto de línea para SQL*Plus y Flyway.
+- `.ctl` con tabla calificada (`ESQUEMA.TABLA`) cuando el cargador conecta como sysdba.
+- `.sh`: validar con `bash -n`; no tocar bloques ajenos al delta, pero avisar si
+  contienen contraseñas.
+
+### Directorios Oracle (`UTL_FILE`)
+
+- `ORA-29280: invalid directory object` = el nombre del directorio no existe en
+  ese ambiente. Homologar el **nombre** del directorio entre ambientes (CDSI a BD)
+  para que el mismo body sirva en UAT y PRD.
+
+### Validación en UAT antes del pase
+
+- La certificación es válida solo con **datos**: verificar en el log de
+  SQL*Loader `read: N`, `rejected: 0` y que el reporte generado tenga N+1 líneas.
+  Un reporte de 1 línea = solo encabezado (o entrada vacía, o JOIN sin match, o
+  body sin el delta). Ver skill `batch-log-review`.
+- Confirmar qué versión del body está compilada: `all_objects.last_ddl_time` +
+  `all_source` filtrando las líneas del delta.
+
+### Flyway (repo de migraciones de BD)
+
+- Estructura `flyway/oracle/{tst,stg,prd}/<ESQUEMA>/migrations/V<yyyyMMddHHmm>__<TICKET>_<desc>.sql`;
+  el mismo archivo se replica en los 3 ambientes. Merge a `main` dispara la migración.
+- Verificar que la carpeta del esquema exista antes de proponerlo en el CDPP.
+- DDL de tabla y body en **migraciones separadas** (el DDL hace commit implícito).
+- Rollback = **nueva migración** con el body vigente; nunca editar una migración aplicada.
+
+---
+
 ## Cómo registrar un nuevo tipo
 
 Cuando un nuevo CDPP sea aprobado por el Líder Técnico:

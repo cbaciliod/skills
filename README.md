@@ -50,6 +50,34 @@ Crea y redacta actividades en Jira siguiendo los estándares del equipo de Novop
 |**Historia**|Historia de usuario genérica|
 |**GPBD**|Proyecto de base de datos|
 
+**Modo rápido:** con un link o clave de ticket ("actualiza CDSI-XXXX en base a CDSI-YYYY") lee los tickets, redacta y publica sin menú ni formulario.
+
+**Publicación:** `scripts/md2adf.py` convierte el borrador Markdown a ADF con títulos verdes y valida las reglas que Jira rechaza (`INVALID_INPUT`).
+
+---
+
+### [`env-compare`](./env-compare/)
+
+Compara archivos de un cambio entre ambientes (test / uat / prd, vigente vs nuevo) y arma el archivo de producción aplicando solo el delta.
+
+|Capacidad|Descripción|
+|-----------|-------------|
+|`scripts/compare.py`|Tabla por archivo (bytes, md5, EOL, `/` final) y veredicto: idénticos, mismo código o diferente|
+|Diff lógico|Ignora CRLF, espacios y el esquema del encabezado `CREATE OR REPLACE`|
+|Seguridad|Redacta contraseñas y no compara archivos de datos (pueden tener PAN)|
+
+---
+
+### [`batch-log-review`](./batch-log-review/)
+
+Diagnostica corridas de procesos agendados y cargas Oracle (SQL*Loader, PL/SQL, `UTL_FILE`): por qué cargó 0 filas, por qué el reporte salió vacío o por qué falló un paso.
+
+|Capacidad|Descripción|
+|-----------|-------------|
+|Tabla de la corrida|Paso por paso con la señal de problema de cada uno|
+|Árbol de diagnóstico|Entrada vacía, archivo pisado, `ORA-29280`, JOIN sin coincidencias, `.bad` antiguo|
+|Comandos seguros|Solo conteos y fechas; nunca `cat` de archivos con PAN|
+
 ---
 
 ### [`novo-legacy-migration-context`](./novo-legacy-migration-context/)
@@ -70,6 +98,7 @@ Migra **un** endpoint legacy a Go sobre go-bricks, fase por fase (≤400 líneas
 |------------|----------|
 |`/migrate <endpoint>`|Migración por fases|
 |`list` / `status` / `roadmap`|Inventario, detalle por fase y orden recomendado|
+|`scan` / `scan-all`|Análisis del endpoint (o de todos) antes de migrar|
 |`verify-parity` / `parity-solve`|Simetría Java↔Go y plan de correcciones|
 |`usecases` / `techdoc`|Casos de prueba (`EST-NN`) y doc técnica con diagramas|
 |`migrate-ticket-plan` (`mtp`)|Plan de Desarrollo en la descripción del ticket Jira|
@@ -89,7 +118,7 @@ Valida servicios Go sobre go-bricks y sus PRs: toolchain, uso de go-bricks, SQL,
 |`scan <path>`|Auditoría del código con roadmap de remediación por fases|
 |`pr-fix <PR>`|Atiende comentarios de CodeRabbit, reviewers y CI|
 
-> Los skills `go-dev-technical`, `novo-legacy-migration-context` y `novo-legacy-migration-endpoint` se toman de la base [galopez-shark/skills](https://github.com/galopez-shark/skills) (`legacy/`) y se sincronizan desde ahí; no se editan localmente.
+> Los skills `go-dev-technical`, `novo-legacy-migration-context` y `novo-legacy-migration-endpoint` se toman de la base [galopez-shark/skills](https://github.com/galopez-shark/skills) (`legacy/` y `review/go-dev-technical`) y se sincronizan desde ahí; no se editan localmente.
 
 ## Instalación
 

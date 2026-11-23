@@ -6,6 +6,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.0.0/) y el v
 
 ---
 
+## [1.4.0] - 2026-11-23
+
+### Added
+
+- feat(env-compare): nuevo skill para comparar archivos entre ambientes y armar el archivo de PRD con solo el delta (`scripts/compare.py`)
+- feat(batch-log-review): nuevo skill para diagnosticar corridas de procesos agendados y cargas Oracle (SQL*Loader, PL/SQL, `UTL_FILE`)
+- feat(jira-activities): `scripts/md2adf.py` convierte Markdown a ADF con títulos verdes y valida reglas de Jira
+- feat(jira-activities/cdsi): variantes de solicitud a BD e Infra (apoyo en incidentes, recursos de PRD, logs de agendado, objetos de BD, NGINX)
+
+### Changed
+
+- feat(jira-activities): modo rápido para actualizar tickets existentes, sección de publicación en ADF y checklist de seguridad PCI
+- docs(jira-activities/cdpp): lecciones de pase de BD Oracle + batch (delta sobre vigente, directorios `UTL_FILE`, validación en UAT, Flyway)
+- chore(skills): frontmatter `name`/`description` en `jira-activities` y `migrate-spring-boot-java25` para que se activen solos
+- chore(skills-migracion): sincronizar con la base galopez-shark/skills (commit `4db1c8c`): `go-dev-technical` v2.29.0 (ahora en `review/`), `novo-legacy-migration-context` v3.5.0, `novo-legacy-migration-endpoint` v4.32.0 (nuevos `scan` / `scan-all` y `references/` por subcomando)
+
+---
+
 ## [1.3.0] - 2026-11-12
 
 ### Added
