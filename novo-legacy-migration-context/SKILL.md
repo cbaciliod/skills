@@ -4,7 +4,7 @@ description: "Initializes or updates the migration context for a legacy-to-Go pr
 license: MIT
 metadata:
   author: galopez-shark
-  version: "3.3.0"
+  version: "3.5.0"
   domain: migration
   triggers: migration-context, init-migration, novo-context, migration context, inicializar migracion, migration-context ticket
   role: specialist
@@ -57,7 +57,29 @@ NEXT  after setup, use `/migrate list`, `/migrate roadmap`, or `/migrate <endpoi
 
 ---
 
+## When NOT to use this skill
+
+- Migrating or planning one endpoint → `/migrate <endpoint>`, `mtp`, `mdp`.
+- A Go repository with no legacy source to inventory.
+- Reviewing a PR → `/go-dev-technical review`.
+
+---
+
 ## Workflow
+
+### Question protocol (applies to every step below)
+
+Ask in **rounds**, not one long form:
+1. **Read before asking.** Anything answerable from `.migration-context.yaml`, the Java origin, the
+   repos or Jira is read, never asked. Ask only what only the user knows.
+2. **Frontier only.** A round holds every question whose prerequisites are already answered
+   (max 4, with a recommended option first). Never ask a question that depends on an answer you
+   do not have yet; it goes to the next round.
+3. **"I don't know" is an answer.** Record the item as `pendiente`, look it up if it can be read,
+   and do not invent a value to move on.
+4. **Stop when the frontier is empty.** Then print what was decided (one line per item) and ask
+   for a single confirmation before writing or publishing anything.
+5. **Do not re-ask** a decision the user already made in this session.
 
 ### 0. Check for existing context
 
@@ -1187,3 +1209,11 @@ its **evidence** (command run, file written, answer the user gave). A step with 
 is shown as `❌ NO EJECUTADO` — never omitted, never `✅`. Judging a step "redundant for this
 case" is the user's call: ask, do not drop it silently. Approving a plan is not approving
 anything that gets published or committed — those need the exact text/diff approved.
+
+## Working if (how the user can tell the run went well)
+
+- `.migration-context.yaml` was saved and every inventory endpoint has a status and complexity.
+- Questions came in rounds, nothing readable from the repos was asked, nothing was re-asked.
+- Unknowns are recorded as `pendiente`, not invented.
+- Nothing was written to Jira without the exact content approved.
+- The completion checklist was printed with evidence; gaps read `❌ NO EJECUTADO`.

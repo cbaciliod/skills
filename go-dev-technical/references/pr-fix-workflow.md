@@ -142,9 +142,10 @@ with the user**. For each item, before asking, gather evidence:
 
 1. Read the code at `file:line` on the PR head (the comment may be stale).
 2. Check project memory (`MEMORY.md` + linked files), the repo `CLAUDE.md`,
-   `.migration-context.yaml` and, for migrations, the Java source the Go code must mirror.
-   **Legacy parity beats aesthetics**: a behaviour that replicates the Java contract is
-   documented and the comment is rejected with that evidence.
+   `.migration-context.yaml` (when it exists) and, **only in Migration mode** (see `SKILL.md`
+   "Mode"), the Java source the Go code must mirror. In Migration mode **legacy parity beats
+   aesthetics**: a behaviour that replicates the Java contract is documented and the comment is
+   rejected with that evidence. In Build and Standard mode there is no parity exemption.
 3. Check the go-bricks rules in this skill (checks 1-21) — if the comment asks for something
    the framework or these rules contradict, say which rule.
 
@@ -162,6 +163,22 @@ Record the user's decision for every item; this table drives Steps 4 and 6.
 
 ## Step 4 — Apply the accepted items in a separate commit
 
+**Red first (failing CI and real bugs).** A fix for a failing check or a reported defect starts
+with a **loop that goes red on exactly that symptom** — never with a theory read off the code:
+
+1. Name **one command** (a test, a `go test -run`, the failing CI job's command) and **run it
+   first**, showing the invocation and its output with secrets redacted. It must reproduce the
+   *reported* failure, not a nearby one, and give the same verdict on every run.
+2. If it cannot be reproduced (flaky, environment-only), say so and ask the user for the log or
+   access; do not fix blind.
+3. For a real bug, write the regression test at the seam that reaches it, watch it **fail**,
+   apply the fix, watch it **pass**. If no such seam exists, report that as a finding instead of
+   adding a shallow test that gives false confidence.
+4. With more than one plausible cause, list 3-5 ranked causes, each with the prediction "if X is
+   the cause, changing Y makes it disappear", and show them to the user before testing.
+5. Tag temporary debug output with a unique prefix (`[DEBUG-xxxx]`) and remove it all before the
+   commit (`grep` the prefix). Style or wording comments need no loop.
+
 Hard rules:
 
 - **New commit(s) on the PR branch. Never `--amend`, never rebase, never `push --force`**
@@ -169,10 +186,10 @@ Hard rules:
 - One concern → one commit when the fixes are unrelated; otherwise a single
   `fix: address review feedback` commit. Subject ≤72 chars, lowercase `type: desc`, **no
   ticket in the title**; body lists what was addressed and ends with `Refs: <TICKET>`.
-- **Every fix must meet the same code standards as the migration itself** — a review comment
+- **Every fix must meet the same code standards as the original work (new, fix or migration)** — a review comment
   is never a license to write lower-quality code. Source of truth: the `go-dev-technical`
-  checks (this skill) for *what* the standard is, and `novo-legacy-migration-endpoint`
-  ("Build to the review standard" + "Implementation Rules") for *how to write it*. Do not
+  checks (this skill) for *what* the standard is, and `novo-go-construction-rules`
+  (`build-to-review-standard.md` + `implementation-rules.md`) for *how to write it*. Do not
   restate them from memory; re-read the relevant section before writing the fix. The ones
   that fixes violate most often:
   - **Funnel & single source:** return through the existing response funnel; a new code and
@@ -185,11 +202,11 @@ Hard rules:
     `queries.go`; filtering in SQL, not in memory; no stored procs.
   - **Bus contracts:** exchange/queue/routing-key/`EventType` copied from the counterpart,
     never retyped; events via outbox in the same tx, not a compensation call.
-  - **Parity:** error codes/messages immutable, validation precedence and response shape as
+  - **Parity (Migration mode only):** error codes/messages immutable, validation precedence and response shape as
     in the Java source. A critical Java bug is **reported and decided with the user**, never
     silently fixed or replicated.
   - **Code quality:** ≤7 params, complexity ≤15, comments short and explain WHY (≤100
-    chars/line, no lengthy blocks), **no source-language references in comments** (no "Java", "Jackson", "Spring",
+    chars/line, no lengthy blocks), **no source-language references in comments** (Migration mode: no "Java", "Jackson", "Spring",
     "parity" — run the grep from the skill), constants unexported when single-package,
     `getDB` func pattern (never inject raw DB), errors wrapped with `%w`.
   - **Security:** new PAN/CVV/expiry/cardToken fields masked in logs (`log.sensitivefields`
@@ -320,7 +337,7 @@ PR is closed.
 | 1 | Collected all sources (threads, reviews, issue comments, CI) | counts per source |
 | 2 | What each reviewer / CodeRabbit wrote shown in ES + table | the per-author blocks and the table printed |
 | 3 | Every item validated with the user | user verdict per item |
-| 4 | Fix in a new commit, standards checked | commit SHA + `make check`/review-on-diff result |
+| 4 | Fix in a new commit, standards checked | commit SHA + `make check`/review-on-diff result; for a CI failure or bug, the red command run before the fix and its output |
 | 5 | CI green on the pushed SHA | `gh pr checks` output, SHA |
 | 6 | Replies/resolves published | the **approved ES draft** + the exact EN text posted |
 | 7 | Re-review requested only as needed | reviewers added, CodeRabbit decision |
@@ -343,6 +360,6 @@ skill's `PreToolUse` hook, which forces a confirmation prompt showing the litera
 - Do not trust a bot's suggestion by default: CodeRabbit is frequently right and frequently
   wrong about this codebase's conventions — validate, don't rubber-stamp.
 - CI green is the gate for Step 6; a red or pending check is never "good enough".
-- Fixes follow the migration code standards (go-bricks, parity, naming, tests) — a reviewer's
+- Fixes follow the code standards (go-bricks, naming, tests; parity only in Migration mode) — a reviewer's
   or bot's suggestion that breaks them is adapted or rejected, never copied blindly.
 - Respect the merge caps and NKH1 title rules from `review` Phase 1 for any commit you create.

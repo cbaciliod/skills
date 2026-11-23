@@ -4,13 +4,13 @@ description: "Technical validator for Go services on go-bricks — stops broken 
 license: MIT
 metadata:
   author: galopez-shark
-  version: "2.21.0"
+  version: "2.29.0"
   domain: review
   triggers: go-dev-technical, pr-fix, atender comentarios PR, comentarios coderabbit, resolver comentarios review, go dev technical, go technical review, go-bricks review, go-bricks scan, validar nombres go, revisar integracion bus, roadmap de remediacion go, deep vs shallow modules, fuga de informacion, revisar duplicacion go, DRY go, idioms go uber
   role: specialist
   scope: code-review
   output-format: report
-  related-skills: novo-legacy-migration-endpoint, go-bricks-modules, golang-patterns, golang-code-style, golang-error-handling, golang-testing, common:security-baseline
+  related-skills: novo-go-construction-rules, novo-go-build, novo-legacy-migration-endpoint, go-bricks-modules, golang-patterns, golang-code-style, golang-error-handling, golang-testing, common:security-baseline
 hooks:
   PreToolUse:
     - matcher: "Bash"
@@ -26,6 +26,30 @@ Technical quality skill for Go services built on go-bricks. Three modes:
 - **scan** — project-wide audit for anti-patterns, unused go-bricks features, and SQL safety
 - **pr-fix** — attend the feedback already left on a PR (CodeRabbit, reviewers, CI): validate, fix in a separate commit, confirm CI, reply/resolve, re-request review
 
+## When NOT to use this skill
+
+- Non-Go code (Java, TypeScript, PHP, Python) → `common:pr-review`.
+- Writing code → `/build` (new work) or `/migrate` (a legacy endpoint); this skill validates, it does not build.
+- No PR URL / path to inspect: `review` and `scan` need a concrete target.
+
+---
+
+## Mode — decide once, print it on the first line of the report
+
+`review` and `pr-fix` work on **any Go PR**: new work, a fix, a refactor or a migration. Nothing
+in them requires a migration. Decide the mode once, before Phase 0, and print it:
+
+| Mode | When | What changes |
+|---|---|---|
+| **Migration** | `.migration-context.yaml` exists in the repo **and** the PR's ticket, branch or paths match an `endpoint_inventory` entry (or the PR body cites a Java origin) | Java-parity rules apply: a name/code that mirrors the Java contract is documented, not reported (rule 5); check 23 reads the `EST-NN` list / Java origin |
+| **Build** | `docs/builds/<TICKET>.build-plan.yaml` exists for the PR's ticket, or the PR body lists `CA-NN` | Check 23's spec is the approved `CA-NN` + `S-NN` + `IN-NN` + `TC-NN`; no Java |
+| **Standard** (default) | neither of the above | No Java, no parity exemptions: names, codes and structure are judged on their merits. Check 23's spec is the ticket's acceptance criteria / the PR description; none readable → "no spec available" |
+
+Outside Migration mode every "legacy parity" exemption below is **off** and the `Java|Jackson|Spring|parity`
+comment grep is not required. Unsure which mode applies → say so and use Standard; never assume a migration.
+
+---
+
 ## Fast path — the whole review on one screen
 
 Read this first; the rest of the file is the detail behind each line. Order is chosen so the
@@ -36,6 +60,8 @@ cannot need it.
 |---|---|---|---|
 | 1 | Resolve the PR ref (`git fetch origin refs/pull/<N>/head`) | seconds | A wrong branch means a wrong review. Never guess |
 | 2 | **Phase 0** — worktree, `build` / `vet` / `test -cover` / `golangci-lint` / `go fix` | minutes | The toolchain finds what reading cannot. Never opine on an uncompiled diff |
+| 2b | **Step 0.5b mergeability** — `git merge-tree` against the base, commits behind | seconds | A PR that conflicts cannot land, however clean its code. Catches stacked PRs whose parent was squash-merged |
+| 2c | **Step 0.5c open feedback** — unresolved review threads (CodeRabbit + humans), `CHANGES_REQUESTED` | seconds | Unclosed feedback means the PR is not ready. If any exists, the report opens with a ⛔ BLOQUEANTE block |
 | 3 | **Step 0.6 triage** — what does the diff actually contain? | 5 s | Marks whole check families N/A *with a reason*, so nothing expensive runs pointlessly |
 | 4 | **Step 0.7 sweep** — one pass, all deterministic patterns → `/tmp/rv-sweep.txt` | one tree walk | Replaces ~83 separate greps. Every later check reads this file instead of re-scanning |
 | 5 | **Blockers** from the sweep: SQL injection → stored procs → layer breaks → error/leak/concurrency → 21a idioms | minutes | Fail fast. If it must never merge, say so before spending effort on style |
@@ -51,11 +77,13 @@ cannot need it.
 2. **Every finding carries `file:line` + a concrete failure scenario + a fix.** No exceptions.
 3. **Unverifiable is ⚠️ NO VERIFICADO, never ✅.** A gap acknowledged beats a gap hidden.
 4. **Every SHOULD-FIX carries its concrete proposal** — the exact name, the `git mv` destination, the before→after diff, or (Phase 3b) the count plus the proposed owner. Without it the item is not ready and is not emitted.
-5. **Legacy parity beats aesthetics.** A name or a code that replicates the Java contract is documented, not reported.
+5. **Legacy parity beats aesthetics — in Migration mode only.** A name or a code that replicates the Java contract is documented, not reported. In Build and Standard mode there is no parity exemption.
 
 6. **No silent skips.** Every subcommand ends by printing its checklist of mandatory steps with
    the evidence of each (review: Fast-path rows 1-10 and checks 1-22 as run/N-A-with-reason;
-   scan: its phases; pr-fix: the table in `references/pr-fix-workflow.md`). A step without
+   scan: its phases; pr-fix: the table in `references/pr-fix-workflow.md`). For review and scan,
+   the rows **report file overwritten**, **`code` launched** (command and its result) and
+   **open threads / conflicts checked** (Step 0.5c: counts, or `NO VERIFICADO`) are part of it. A step without
    evidence is `❌ NO EJECUTADO`, never omitted and never `✅`. Anything published to GitHub
    needs the user's approval of the **exact text** — approving a plan is not approving the text.
 
@@ -176,6 +204,8 @@ SUBCOMANDOS
       Revision completa de un PR. Idioma por defecto: ES (pasar EN para ingles).
       Fase 0  Base de evidencia   build + vet + test -cover + golangci-lint + go fix
                                   worktree aislado, comparado contra origin/main
+      Fase 0b Mergeabilidad       conflictos + hilos sin resolver (CodeRabbit/humanos):
+                                  si hay, el reporte abre con ⛔ BLOQUEANTE
       Fase 1  NKH1                tamano, titulo, PCI/secretos, bump de version
       Fase 2  go-bricks           tipos reinventados, SQL safety, capas, BUS,
                                   patrones DB/handler, reuso, ubicacion de archivos
@@ -186,7 +216,8 @@ SUBCOMANDOS
                                   idioms de Go (Uber). Todo hallazgo LLEVA CONTEO.
       Fase 4  Descubrimiento      que ofrece go-bricks que el PR no esta usando
       Fase 5  Scope y evidencia   un solo concern, todo hallazgo con file:line
-      Salida: <tmp>/pr-<N>-review.md  (markdown pegable en el PR)
+      Salida: <tmp>/pr-<N>-review.md  (markdown pegable en el PR). SIEMPRE se sobrescribe
+              en cada corrida y SIEMPRE se lanza `code "<ruta>"` para abrirlo.
 
   /go-dev-technical scan <path> [LANG]
       Auditoria del codigo existente + ROADMAP de remediacion ejecutable.
@@ -197,7 +228,7 @@ SUBCOMANDOS
         - features de go-bricks sin usar, con donde aplicarlas
         - roadmap por fases: <=400 lineas y <=10 files por fase, una rama por
           fase desde main, prioridad P0..P4, dependencias y diferidos
-      Salida: <tmp>/scan-<path>-audit.md
+      Salida: <tmp>/scan-<path>-audit.md  (misma regla: sobrescribe y abre con `code`)
 
   /go-dev-technical pr-fix [PR_URL]
       Atiende el feedback de un PR (CodeRabbit, reviewers, CI caido). Pide el PR.
@@ -236,8 +267,9 @@ REGLAS DURAS
   - go-bricks manda: si el framework lo provee, se usa.
   - Todo hallazgo lleva file:line + escenario de fallo concreto + fix.
   - Lo que no se pudo verificar es (warn) NO VERIFICADO, nunca (ok).
-  - Paridad legacy gana sobre estetica: un nombre que replica el contrato Java
-    se respeta y se documenta, no se reporta.
+  - Paridad legacy gana sobre estetica SOLO en modo Migracion: un nombre que replica
+    el contrato Java se respeta y se documenta, no se reporta. Modo (Migracion /
+    Build / Estandar) se decide una vez y va en la primera linea del reporte.
   - Fase 3b sin numeros no existe: un hallazgo de diseno sin conteo de sitios /
     autoridades / evidencia de costo en git es opinion, y no se emite.
   - "Duplication is far cheaper than the wrong abstraction": duplicacion chica y
@@ -394,7 +426,7 @@ cite the source skill on every finding that comes from one:
 | secrets, PAN, crypto, logs, auth, tenant | `common:security-baseline` |
 | DDL / migrations | `common:database-design-and-naming` |
 | branch, commit, PR, promotion | `common:sdlc-developer-quick-reference` |
-| a migration repo | `novo-legacy-migration-endpoint` → "Implementation Rules" |
+| a migration repo | `novo-go-construction-rules` → `references/implementation-rules.md` |
 
 **Step 2 — check 22, the mechanical code-quality rules** (SHOULD-FIX; NIT for comments):
 
@@ -403,12 +435,12 @@ cite the source skill on every finding that comes from one:
 | ≤7 params per func (group into a struct) | `grep -nE 'func .*\(([^,)]*,){7,}'` on added lines |
 | Cyclomatic complexity ≤15 | `gocyclo -over 15` on changed files (or the `gocyclo` linter) |
 | Comments are short and say WHY, **≤100 chars/line** (no lengthy blocks) | awk on added comment lines |
-| No source-language refs in comments (Java, Jackson, Spring, "parity") | `grep -rniE 'Java\|Jackson\|Spring\|parity'` on added `//` lines |
+| No source-language refs in comments (Java, Jackson, Spring, "parity") — **Migration mode only** | `grep -rniE 'Java\|Jackson\|Spring\|parity'` on added `//` lines |
 | Constants unexported when single-package | sweep exported `const` with no cross-package use |
 | SQL in `queries.go`, not inline; `getDB` func, never a raw injected DB | sweep |
 | Every `Raw`/`Expr`/`SetExpr` carries `// SECURITY: Manual SQL review completed - …` | check 1b |
 
-A rule that the PR breaks **by legacy parity** (a name or code mirroring the Java contract)
+In Migration mode, a rule that the PR breaks **by legacy parity** (a name or code mirroring the Java contract)
 is documented, not reported (rule 5). Every finding still needs `file:line` + the concrete fix.
 
 ### Phase 2 — go-bricks validation (checks 1-10)
@@ -416,7 +448,7 @@ is documented, not reported (rule 5). Every finding still needs `file:line` + th
 Anti-patterns: the PR must not reinvent go-bricks types, break layer boundaries,
 or escape the QueryBuilder unsafely.
 
-### Phase 3 — Correctness, runtime & naming (checks 9, 11-16)
+### Phase 3 — Correctness, runtime & naming (checks 9, 11-16, 24)
 
 Correctness bugs and code smells linters miss, plus API/naming design.
 
@@ -466,6 +498,8 @@ Not about blocking — about leveraging the framework's full potential.
 | 20 / 20a-20f | DRY — one authoritative representation (code clones, parallel lists, copy-pasted bootstrap, cost evidence, over-application guard) | 3b | SHOULD-FIX |
 | 21 / 21a-21d | Go idiom safety net (Uber Go Style Guide) + modern stdlib, version-gated | 3b | BLOCKER / SHOULD-FIX / NIT |
 | 22 | Best-practice standards: skills loaded per diff + params ≤7, complexity ≤15, comment rules | 1b | SHOULD-FIX / NIT |
+| 24 | Every created/changed unit has a use-case test (`0.0%` functions in changed files) | 3 | SHOULD-FIX / BLOCKER on money path |
+| 23 | **Spec axis**: does the PR deliver what the ticket / DoD / acceptance criteria asked for (`EST-NN` and Java parity only in Migration mode)? | 5 | BLOCKER / SHOULD-FIX |
 
 ---
 
@@ -530,6 +564,18 @@ Map each uncovered block back to a line and ask: *is this the error path that wi
 actually happen in production?* An uncovered transport-failure branch matters more
 than an uncovered getter.
 
+### Step 0.3b — Units with no test at all (feeds check 24)
+
+A function at `0.0%` in a file the PR changed has no test, whatever the package percentage says:
+
+```bash
+go test ./<changed-pkg>/... -coverprofile=/tmp/c.out >/dev/null
+CHANGED=$(git diff --name-only origin/<base>...pr-<N> -- '*.go' ':(exclude)*_test.go')
+go tool cover -func=/tmp/c.out | grep -F "$CHANGED" | awk '$NF=="0.0%"'   # each line = an untested unit
+```
+
+Keep the list; check 24 judges each line. Not run → check 24 is `❌ NO EJECUTADO`.
+
 ### Step 0.4 — Race detector on concurrent code
 
 If the diff touches goroutines, channels, or shared state:
@@ -551,6 +597,80 @@ git log origin/main..pr-<N> --oneline
 Report it as: *"⚠️ `gh` sin scope de repo — no pude leer el título real; el commit
 `<subject>` son N chars y cumple"*. Never silently claim ✅ on something you
 could not read.
+
+### Step 0.5b — Mergeability: behind main and conflicts (MANDATORY)
+
+A review that never asks "can this merge?" can approve a PR that GitHub will refuse. It matters
+most for **stacked** PRs: when the parent PR is squash-merged, its changes land on `main` under a
+new hash, and the child branch still carries the old commits, so it conflicts on the same files.
+This runs locally, so it works when `gh` has no scope:
+
+```bash
+git fetch origin "$BASE" --force
+echo "atraso: $(git rev-list --count pr-<N>..origin/$BASE) commits de $BASE que el PR no tiene"
+# Simulates the merge without touching the worktree, the index or any ref
+git merge-tree --write-tree --name-only origin/$BASE pr-<N>
+```
+
+- Output with `CONFLICT (content)` lines → **BLOCKER `[merge]`**: list the conflicting files and
+  the commits behind. The code may be fine; it still cannot land. Fix = update the branch
+  (`gh stack sync` for a stacked PR, otherwise merge `$BASE`), resolve, re-run the toolchain
+- Behind with a clean merge → NIT: say how many commits behind
+- Not run, or `gh`/`git` could not resolve the base → ⚠️ `NO VERIFICADO`, never ✅
+
+**Size is measured with a tree diff when the parent was squash-merged.** In that case
+`origin/$BASE...pr-<N>` (three dots) re-counts the parent's already-merged changes; use
+`git diff origin/$BASE pr-<N>` (two dots) for the PR's real increment, and say which one you used.
+
+### Step 0.5c — Open feedback: unresolved threads (CodeRabbit and humans) (MANDATORY)
+
+A PR with conflicts or with review threads nobody closed is **not ready to merge**, whatever the
+code looks like. Check both on EVERY review, first-time or re-review:
+
+```bash
+gh api graphql -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){
+  mergeable reviewDecision
+  reviewThreads(first:100){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated path line
+    comments(first:1){nodes{author{login} body}}}}}}}' -f o=<owner> -f r=<repo> -F n=<N>
+```
+
+Paginate while `hasNextPage`. Count the threads with `isResolved: false`, split by author: **CodeRabbit**
+(`coderabbitai[bot]`), other bots, and humans. An `isOutdated` thread that is still unresolved
+counts (say it is outdated: the line moved, but nobody closed or answered it).
+
+- **Any unresolved thread, or `mergeable: CONFLICTING` / `CONFLICT` lines from Step 0.5b →
+  BLOCKER.** The review report opens with this block, before any other finding, in this exact
+  shape (translate with `LANG`):
+
+  > ⛔ **BLOQUEANTE — el PR no puede mergearse todavía**
+  > - Conflictos con `{base}`: {n archivos | ninguno}
+  > - Hilos sin resolver: **{n}** (CodeRabbit {a}, humanos {b}, otros {c}) — {a lista `file:line` con 1 línea cada uno}
+  > Cierra o responde cada hilo y resuelve los conflictos; después vuelve a correr la revisión.
+  > Para atenderlos: `/go-dev-technical pr-fix <PR>`.
+
+- `reviewDecision: CHANGES_REQUESTED` → decide by **who** requested the changes (`gh api user --jq .login`
+  gives who "we" are) and **whether the author already answered**:
+  - **Requested by someone else** → BLOCKER, reviewer named. Only that person can clear it; say so.
+  - **Requested by us (a prior review of ours) → it is a re-review: do NOT treat it as a blocker by
+    itself.** GitHub never clears `CHANGES_REQUESTED` on its own (commits and resolved threads do not
+    clear it; only a new APPROVE or a dismissal does), so a stale state with the work done is
+    expected. Run check **18c** on every item of that review against the PR head and decide:
+    - Every item ✅ Atendido / 🔁 Justificado, no new blocker, no open threads, no conflicts →
+      **verdict ✅ Aprobado**, and the report's last line is
+      `Acción en GitHub: enviar esta revisión como APPROVE — es lo que cierra el CHANGES_REQUESTED anterior.`
+    - Any item 🟡 / ❌ / ⚠️ / 🆕 → the verdict stays ❌ with those items as findings at their
+      original severity; the action line says `REQUEST_CHANGES`.
+    - Never leave the verdict ❌ "por proceso" when 18c says everything was addressed.
+- Zero unresolved threads and no conflicts → one line `✅ Sin conflictos ni hilos abiertos`.
+- `gh` cannot read threads → ⚠️ `NO VERIFICADO`, **never ✅**; the report says so at the top.
+
+**Which GitHub review event to recommend** (end of every report, one line): `REQUEST_CHANGES` only
+when there is a real blocker or an unaddressed SHOULD-FIX; `COMMENT` when only NITs remain (a NIT-only
+review sent as `REQUEST_CHANGES` blocks the merge for no reason and leaves the next re-review stuck);
+`APPROVE` when nothing is open. The skill recommends it; the user submits.
+
+This blocker does not replace the code findings: still run the rest of the review and report
+them below the block. The verdict line cannot be "listo para mergear" while this block is present.
 
 ### Step 0.6 — Triage: decide which check families can apply (MANDATORY, 5 seconds)
 
@@ -2227,6 +2347,22 @@ Flag:
 - **Missing validation on external response**: external API response parsed without checking status
 - **Stale cache on error**: cache miss + fetch error → returns stale value without logging
 
+### 24. Every created or changed unit has a use-case test (SHOULD-FIX; BLOCKER on the money path)
+
+The migration standard is that a unit ships with its test in the same PR ("tests in the next
+phase" is not allowed). Use the Step 0.3b list: each `0.0%` function in a changed file is a finding
+unless it is **exempt** — plain DTO/struct, constant, generated code, or module wiring covered by
+the handler test that hits the route. A function with a branch, a computation or a side effect is
+never exempt.
+
+- Report each as `file:func — no test`, naming the scenario that should pin it (the `EST-NN` when a
+  case list exists) and the seam to test it at.
+- A function covered only by a test that executes it without asserting an outcome is a check 15
+  finding, not a pass here.
+- Severity rises to **BLOCKER** when the untested unit decides a money movement, a reversal, a
+  balance or an authorization.
+- Report the count: "N changed functions, M with no test".
+
 ### 15. Test quality (SHOULD-FIX)
 
 Go beyond "tests exist" — verify tests are meaningful:
@@ -2242,6 +2378,13 @@ Go beyond "tests exist" — verify tests are meaningful:
 - [ ] **Error paths covered**: not just happy path — test what happens when the DB is down, API returns 500, input is malformed
 - [ ] **No tautological assertions**: `assert.Equal(t, result, result)` or asserting the mock's return value
 - [ ] **Complete mocks**: mock objects mirror the full shape of the real object, not just the fields the author expected
+- [ ] **Expected value has an independent source**: the literal, the legacy behavior or the case
+      list — not computed with the same function/constant/query the test targets (a tautology
+      passes whatever the code does). Flag `want := svc.Compute(in)` style assertions
+- [ ] **Mocks only at the boundary**: DB, external client, clock, randomness, lower-layer
+      interface. Flag a mock of the unit under test or of its private helpers
+- [ ] **Named by capability and scenario**, not by internals (`...CallsRepoTwice`); the `EST-NN`
+      of the case is in the name when a case list exists
 - [ ] **No weakened assertions**: existing assertions not removed or relaxed to make tests pass
 - [ ] **`t.Context()` for a test-scoped context** (Go 1.24+) instead of
       `context.WithCancel(context.Background())` — it is cancelled when the test ends, so a
@@ -3113,6 +3256,27 @@ Flag:
 Exception: changes in `internal/plataform/` (shared infra) that are consumed by the module
 changes are acceptable.
 
+### 23. Spec axis — does the PR deliver what was asked? (BLOCKER / SHOULD-FIX)
+
+Every other check asks "is the code written well" (**Standards**). This one asks "is it the
+right code" (**Spec**). A PR can pass one axis and fail the other, so report them under
+**separate headings** (`## Standards`, `## Spec`) and never merge or re-rank findings across them.
+
+1. **Find the spec**, in this order: the Jira ticket in the PR body / `Refs:` line (read it with
+   the Atlassian connector; its acceptance criteria / DoD are the spec). Then, by mode:
+   **Build** → `docs/builds/<TICKET>.build-plan.yaml` (`CA-NN`, `S-NN`, `IN-NN`, `TC-NN`);
+   **Migration** → the `EST-NN` list, `docs/modules/<module>/<endpoint>.plan-data.yaml` if
+   present, then the Java origin named in `.migration-context.yaml`; **Standard** → the PR
+   description. If none exists, say "no spec available" and skip — do not invent one.
+2. **Report three things**, quoting the spec line for each:
+   - requirements the spec asked for that are **missing or partial** (a `CA-NN`/`EST-NN` with no
+     test, a DoD item with no code, in Migration mode a parity flow not implemented);
+   - behavior in the diff that **was not asked for** (scope creep, extra endpoints, renamed codes);
+   - requirements that **look implemented but are wrong** (a response code or message that differs
+     from the Java — Migration mode only).
+3. A large diff (>400 changed lines) may delegate this check to a sub-agent with a fresh context
+   (diff + spec only); aggregate its report verbatim under `## Spec`.
+
 ### 18. Evidence-based findings (MANDATORY)
 
 Every finding in the report MUST include:
@@ -3145,7 +3309,7 @@ gh api "repos/<owner>/<repo>/pulls/<N>/comments" 2>/dev/null   # inline review t
 
 **Rule for each finding**:
 1. Check whether the author already addressed it in a comment.
-2. **Justification technically valid** (verified against Java parity / go-bricks /
+2. **Justification technically valid** (verified against Java parity in Migration mode / go-bricks /
    source — same discipline as every other finding) → **do NOT re-flag.** Record it as
    resolved so the author sees it was considered:
    > ✅ **Ya justificado por el autor** — `adapter.go:29`: el pool sin cota es intencional
@@ -3248,16 +3412,20 @@ Target path (in order of preference):
    (e.g. `.../scratchpad/pr-{PR_NUMBER}-review.md`) — preferred.
 2. Otherwise the OS temp dir: `${TMPDIR:-/tmp}/pr-{PR_NUMBER}-review.md`.
 
-**Steps**:
+**Steps** (every execution, no exceptions — a re-run of the same PR included):
 1. Resolve the temp dir (scratchpad if available, else `$TMPDIR`/`/tmp`).
-2. Write the full GFM report to `<tempdir>/pr-{PR_NUMBER}-review.md`.
-3. **Try to open the file** for the user by running `code "<abs-path>"` (VS Code).
-   Whether or not that succeeds, the agent's chat response **MUST ALWAYS include the
-   open command verbatim** — `code "<abs-path>"` — plus a clickable `file://<abs-path>`
-   markdown link, so the user can open it in one click even when `code` is not on PATH.
-   Never leave only the bare path: the copy-paste command is mandatory in every review
-   response. (If `code` isn't available, offer `open "<abs-path>"` on macOS as the
-   fallback, but the `code` command stays in the message.)
+2. **Always OVERWRITE** `<tempdir>/pr-{PR_NUMBER}-review.md` with the full GFM report of THIS run.
+   The file name is fixed: never append, never merge with the previous report, never create a
+   variant (`-v2`, `-new`, a timestamp), never skip the write because the file already exists, and
+   never reuse an earlier report's content. Write with the Write tool (full replace), not an edit.
+3. **ALWAYS launch the open command, then check it.** Run `code "<abs-path>"` in Bash on every
+   execution, even when the file was already open from a previous run (VS Code reloads the
+   overwritten file). Check the result: if `code` is not found or exits non-zero, run
+   `open "<abs-path>"` (macOS) and say which one worked; if neither works, say so — never claim
+   the file was opened without having run the command.
+4. The chat response **MUST ALWAYS include the open command verbatim** — `code "<abs-path>"` — plus
+   a clickable `file://<abs-path>` markdown link, so the user can open it in one click even when
+   the command failed. Never leave only the bare path.
 
 **Never** write review files inside the reviewed repo, and never `git add`/commit
 them. (This is distinct from PR *description* text, which is delivered inline in
@@ -3328,8 +3496,16 @@ pushes back on a naming or concurrency finding:
 - go-bricks `database/types/interfaces.go` — the authoritative QueryBuilder surface (checks 1b.1, 4c). **Derive it, never quote from memory**: `grep -hE '^\s+[A-Z][A-Za-z0-9]*\(' $GB/database/types/*.go`. The inventory in 1b.1 is stamped v0.63.0 and grows every release
 - go-bricks `messaging` / `outbox` / `inbox` packages — `Declarations.Validate()`, `ConsumerDeclaration`, `EventIDFromHeaders`, `Inbox.ProcessOnce` (check 6b). Read them in `$(go env GOMODCACHE)/github.com/gaborage/go-bricks@<ver>/`
 - NKH1 `common:pr-review` — sizing, title, coverage floor, promotion gates (Phase 1)
-- `novo-legacy-migration-endpoint` (`/migrate`) — phase caps (≤400 líneas / ≤10 files), branch-per-phase from `main`, version bump per phase (scan Step 6)
+- `novo-go-construction-rules` (shared by `/migrate` and `/build`) — phase caps (≤400 líneas / ≤10 files), branch-per-phase from `main`, version bump per phase (scan Step 6)
 
 **Keep this list honest**: when a rule here stops matching the linked source
 (a Go release changes a default, the style guide is revised), update the rule —
 do not let the skill drift into folklore.
+
+## Working if (how the user can tell the run went well)
+
+- The toolchain evidence (build, vet, test with coverage, lint) is in the report before any finding.
+- Every finding has `file:line`, the rule it breaks and a concrete replacement; BLOCKERs were verified.
+- `pr-fix`: the health check ran first, fixes went in a separate commit (no amend, no force-push),
+  and every publish was confirmed with the exact text.
+- The checklist was printed with evidence; gaps read `❌ NO EJECUTADO`.
